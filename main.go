@@ -97,7 +97,7 @@ func (s *server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgSe
 	}
 }
 
-func (s *server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*pb.Group, error) {
+func (s *server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*pb.CreateGroupResponse, error) {
 	log.Println("CreateGroup")
 	accountId, err := s.resolver.Resolve(ctx, req.ClientKey)
 	if err != nil {
@@ -137,7 +137,47 @@ func (s *server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*
 		},
 	})
 
-	return group, nil
+	return &pb.CreateGroupResponse{
+		Group: group,
+	}, nil
+}
+
+func (s *server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*pb.UpdateGroupResponse, error) {
+	log.Println("UpdateGroup")
+	group, exists := s.groups.Get(req.Group.Id)
+	if group == nil || !exists {
+		return nil, status.Error(codes.NotFound, "Group not found")
+	}
+
+	accountId, err := s.resolver.Resolve(ctx, req.ClientKey)
+	if err != nil {
+		return nil, err
+	}
+	if accountId != group.CreatorId {
+		return nil, status.Error(codes.PermissionDenied, "Not group creator")
+	}
+
+	group.Title = req.Group.Title
+	group.KillProofId = req.Group.KillProofId
+	group.KillProofMinimum = req.Group.KillProofMinimum
+
+	s.groups.Set(group.Id, group)
+
+	// Save to database
+	if err := s.saveGroup(ctx, group); err != nil {
+		return nil, status.Error(codes.Internal, "Failed to update group")
+	}
+
+	// Broadcast to all subscribers
+	s.broadcast(&pb.GroupsUpdate{
+		Update: &pb.GroupsUpdate_UpdatedGroup{
+			UpdatedGroup: group,
+		},
+	})
+
+	return &pb.UpdateGroupResponse{
+		Group: group,
+	}, nil
 }
 
 func (s *server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*pb.DeleteGroupResponse, error) {

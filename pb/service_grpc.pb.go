@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	LfgService_CreateGroup_FullMethodName             = "/gw2lfg.LfgService/CreateGroup"
+	LfgService_UpdateGroup_FullMethodName             = "/gw2lfg.LfgService/UpdateGroup"
 	LfgService_ListGroups_FullMethodName              = "/gw2lfg.LfgService/ListGroups"
 	LfgService_DeleteGroup_FullMethodName             = "/gw2lfg.LfgService/DeleteGroup"
 	LfgService_SubscribeGroups_FullMethodName         = "/gw2lfg.LfgService/SubscribeGroups"
@@ -32,7 +33,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LfgServiceClient interface {
 	// Operations that don't need streaming
-	CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*Group, error)
+	CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*CreateGroupResponse, error)
+	UpdateGroup(ctx context.Context, in *UpdateGroupRequest, opts ...grpc.CallOption) (*UpdateGroupResponse, error)
 	ListGroups(ctx context.Context, in *ListGroupsRequest, opts ...grpc.CallOption) (*ListGroupsResponse, error)
 	DeleteGroup(ctx context.Context, in *DeleteGroupRequest, opts ...grpc.CallOption) (*DeleteGroupResponse, error)
 	SubscribeGroups(ctx context.Context, in *SubscribeGroupsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupsUpdate], error)
@@ -49,10 +51,20 @@ func NewLfgServiceClient(cc grpc.ClientConnInterface) LfgServiceClient {
 	return &lfgServiceClient{cc}
 }
 
-func (c *lfgServiceClient) CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*Group, error) {
+func (c *lfgServiceClient) CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*CreateGroupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Group)
+	out := new(CreateGroupResponse)
 	err := c.cc.Invoke(ctx, LfgService_CreateGroup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lfgServiceClient) UpdateGroup(ctx context.Context, in *UpdateGroupRequest, opts ...grpc.CallOption) (*UpdateGroupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateGroupResponse)
+	err := c.cc.Invoke(ctx, LfgService_UpdateGroup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +144,8 @@ type LfgService_SubscribeToApplicationsClient = grpc.ServerStreamingClient[JoinG
 // for forward compatibility.
 type LfgServiceServer interface {
 	// Operations that don't need streaming
-	CreateGroup(context.Context, *CreateGroupRequest) (*Group, error)
+	CreateGroup(context.Context, *CreateGroupRequest) (*CreateGroupResponse, error)
+	UpdateGroup(context.Context, *UpdateGroupRequest) (*UpdateGroupResponse, error)
 	ListGroups(context.Context, *ListGroupsRequest) (*ListGroupsResponse, error)
 	DeleteGroup(context.Context, *DeleteGroupRequest) (*DeleteGroupResponse, error)
 	SubscribeGroups(*SubscribeGroupsRequest, grpc.ServerStreamingServer[GroupsUpdate]) error
@@ -149,8 +162,11 @@ type LfgServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedLfgServiceServer struct{}
 
-func (UnimplementedLfgServiceServer) CreateGroup(context.Context, *CreateGroupRequest) (*Group, error) {
+func (UnimplementedLfgServiceServer) CreateGroup(context.Context, *CreateGroupRequest) (*CreateGroupResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateGroup not implemented")
+}
+func (UnimplementedLfgServiceServer) UpdateGroup(context.Context, *UpdateGroupRequest) (*UpdateGroupResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateGroup not implemented")
 }
 func (UnimplementedLfgServiceServer) ListGroups(context.Context, *ListGroupsRequest) (*ListGroupsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListGroups not implemented")
@@ -202,6 +218,24 @@ func _LfgService_CreateGroup_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(LfgServiceServer).CreateGroup(ctx, req.(*CreateGroupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LfgService_UpdateGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateGroupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LfgServiceServer).UpdateGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LfgService_UpdateGroup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LfgServiceServer).UpdateGroup(ctx, req.(*UpdateGroupRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -292,6 +326,10 @@ var LfgService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateGroup",
 			Handler:    _LfgService_CreateGroup_Handler,
+		},
+		{
+			MethodName: "UpdateGroup",
+			Handler:    _LfgService_UpdateGroup_Handler,
 		},
 		{
 			MethodName: "ListGroups",
