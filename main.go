@@ -64,8 +64,8 @@ type server struct {
 	groups            *syncmap.Map[string, *pb.Group]
 	groupsSubscribers *syncmap.Map[string, chan *pb.GroupsUpdate]
 
-	applications            *syncmap.Map[string, []*pb.JoinGroupRequest]
-	applicationsSubscribers *syncmap.Map[string, *syncmap.Map[string, chan *pb.JoinGroupRequest]]
+	applications            *syncmap.Map[string, []*pb.GroupApplication]
+	applicationsSubscribers *syncmap.Map[string, *syncmap.Map[string, chan *pb.GroupApplication]]
 
 	resolver keyResolver
 }
@@ -196,6 +196,13 @@ func (s *server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 	}
 
 	s.groups.Delete(group.Id)
+	s.applications.Delete(group.Id)
+	subscribers, ok := s.applicationsSubscribers.Delete(group.Id)
+	if ok {
+		for _, ch := range subscribers.Snapshot() {
+			close(ch)
+		}
+	}
 
 	// Delete from database
 	if err := s.deleteGroup(ctx, group.Id); err != nil {
@@ -220,6 +227,43 @@ func (s *server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb
 	}, nil
 }
 
+func (s *server) JoinGroup(ctx context.Context, req *pb.JoinGroupRequest) (*pb.JoinGroupResponse, error) {
+	log.Println("JoinGroup")
+	group, exists := s.groups.Get(req.GroupId)
+	if group == nil || !exists {
+		return nil, status.Error(codes.NotFound, "Group not found")
+	}
+
+	accountId, err := s.resolver.Resolve(ctx, req.ClientKey)
+	if err != nil {
+		return nil, err
+	}
+
+	if accountId == group.CreatorId {
+		// return nil, status.Error(codes.PermissionDenied, "Cannot join own group")
+	}
+
+	application := &pb.GroupApplication{
+		AccountName: accountId,
+	}
+	s.applications.Update(group.Id, func(applications []*pb.GroupApplication, ok bool) ([]*pb.GroupApplication, bool) {
+		if !ok {
+			applications = []*pb.GroupApplication{}
+		}
+		// Check if already applied
+		for _, app := range applications {
+			if app.AccountName == accountId {
+				return applications, true
+			}
+		}
+		applications = append(applications, application)
+		return applications, true
+	})
+	s.broadcastApplication(group.Id, application)
+
+	return &pb.JoinGroupResponse{}, nil
+}
+
 func (s *server) SubscribeToApplications(req *pb.SubscribeToApplicationsRequest, stream pb.LfgService_SubscribeToApplicationsServer) error {
 	log.Println("SubscribeToApplications")
 	group, exists := s.groups.Get(req.GroupId)
@@ -235,17 +279,18 @@ func (s *server) SubscribeToApplications(req *pb.SubscribeToApplicationsRequest,
 		return status.Error(codes.PermissionDenied, "Not group creator")
 	}
 
-	applications := make(chan *pb.JoinGroupRequest, 100)
+	applications := make(chan *pb.GroupApplication, 100)
 	s.applicationsSubscribers.Update(
 		req.GroupId,
-		func(subscribers *syncmap.Map[string, chan *pb.JoinGroupRequest], ok bool) (*syncmap.Map[string, chan *pb.JoinGroupRequest], bool) {
+		func(subscribers *syncmap.Map[string, chan *pb.GroupApplication], ok bool) (*syncmap.Map[string, chan *pb.GroupApplication], bool) {
 			if subscribers == nil {
-				subscribers = syncmap.New[string, chan *pb.JoinGroupRequest]()
+				subscribers = syncmap.New[string, chan *pb.GroupApplication]()
 			}
 			subscribers.Set(req.ClientKey, applications)
 			return subscribers, true
 		})
 
+	// TODO: What if the group gets deleted?
 	defer func() {
 		subs, ok := s.applicationsSubscribers.Get(req.GroupId)
 		if ok {
@@ -276,6 +321,20 @@ func (s *server) broadcast(update *pb.GroupsUpdate) {
 	}
 }
 
+func (s *server) broadcastApplication(groupId string, application *pb.GroupApplication) {
+	subscribers, ok := s.applicationsSubscribers.Get(groupId)
+	if !ok {
+		return
+	}
+	for _, ch := range subscribers.Snapshot() {
+		select {
+		case ch <- application:
+		default:
+			// Channel full, skip
+		}
+	}
+}
+
 func (s *server) saveGroup(ctx context.Context, group *pb.Group) error {
 	// Save to database
 	return nil
@@ -290,8 +349,8 @@ func main() {
 	s := &server{
 		groups:                  syncmap.New[string, *pb.Group](),
 		groupsSubscribers:       syncmap.New[string, chan *pb.GroupsUpdate](),
-		applications:            syncmap.New[string, []*pb.JoinGroupRequest](),
-		applicationsSubscribers: syncmap.New[string, *syncmap.Map[string, chan *pb.JoinGroupRequest]](),
+		applications:            syncmap.New[string, []*pb.GroupApplication](),
+		applicationsSubscribers: syncmap.New[string, *syncmap.Map[string, chan *pb.GroupApplication]](),
 	}
 
 	grpcServer := grpc.NewServer()

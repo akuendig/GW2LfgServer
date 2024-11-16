@@ -40,7 +40,7 @@ type LfgServiceClient interface {
 	SubscribeGroups(ctx context.Context, in *SubscribeGroupsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupsUpdate], error)
 	JoinGroup(ctx context.Context, in *JoinGroupRequest, opts ...grpc.CallOption) (*JoinGroupResponse, error)
 	// Group creator's stream to receive applications
-	SubscribeToApplications(ctx context.Context, in *SubscribeToApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[JoinGroupRequest], error)
+	SubscribeToApplications(ctx context.Context, in *SubscribeToApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupApplication], error)
 }
 
 type lfgServiceClient struct {
@@ -120,13 +120,13 @@ func (c *lfgServiceClient) JoinGroup(ctx context.Context, in *JoinGroupRequest, 
 	return out, nil
 }
 
-func (c *lfgServiceClient) SubscribeToApplications(ctx context.Context, in *SubscribeToApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[JoinGroupRequest], error) {
+func (c *lfgServiceClient) SubscribeToApplications(ctx context.Context, in *SubscribeToApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupApplication], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &LfgService_ServiceDesc.Streams[1], LfgService_SubscribeToApplications_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[SubscribeToApplicationsRequest, JoinGroupRequest]{ClientStream: stream}
+	x := &grpc.GenericClientStream[SubscribeToApplicationsRequest, GroupApplication]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func (c *lfgServiceClient) SubscribeToApplications(ctx context.Context, in *Subs
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LfgService_SubscribeToApplicationsClient = grpc.ServerStreamingClient[JoinGroupRequest]
+type LfgService_SubscribeToApplicationsClient = grpc.ServerStreamingClient[GroupApplication]
 
 // LfgServiceServer is the server API for LfgService service.
 // All implementations must embed UnimplementedLfgServiceServer
@@ -151,7 +151,7 @@ type LfgServiceServer interface {
 	SubscribeGroups(*SubscribeGroupsRequest, grpc.ServerStreamingServer[GroupsUpdate]) error
 	JoinGroup(context.Context, *JoinGroupRequest) (*JoinGroupResponse, error)
 	// Group creator's stream to receive applications
-	SubscribeToApplications(*SubscribeToApplicationsRequest, grpc.ServerStreamingServer[JoinGroupRequest]) error
+	SubscribeToApplications(*SubscribeToApplicationsRequest, grpc.ServerStreamingServer[GroupApplication]) error
 	mustEmbedUnimplementedLfgServiceServer()
 }
 
@@ -180,7 +180,7 @@ func (UnimplementedLfgServiceServer) SubscribeGroups(*SubscribeGroupsRequest, gr
 func (UnimplementedLfgServiceServer) JoinGroup(context.Context, *JoinGroupRequest) (*JoinGroupResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method JoinGroup not implemented")
 }
-func (UnimplementedLfgServiceServer) SubscribeToApplications(*SubscribeToApplicationsRequest, grpc.ServerStreamingServer[JoinGroupRequest]) error {
+func (UnimplementedLfgServiceServer) SubscribeToApplications(*SubscribeToApplicationsRequest, grpc.ServerStreamingServer[GroupApplication]) error {
 	return status.Errorf(codes.Unimplemented, "method SubscribeToApplications not implemented")
 }
 func (UnimplementedLfgServiceServer) mustEmbedUnimplementedLfgServiceServer() {}
@@ -310,11 +310,11 @@ func _LfgService_SubscribeToApplications_Handler(srv interface{}, stream grpc.Se
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(LfgServiceServer).SubscribeToApplications(m, &grpc.GenericServerStream[SubscribeToApplicationsRequest, JoinGroupRequest]{ServerStream: stream})
+	return srv.(LfgServiceServer).SubscribeToApplications(m, &grpc.GenericServerStream[SubscribeToApplicationsRequest, GroupApplication]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LfgService_SubscribeToApplicationsServer = grpc.ServerStreamingServer[JoinGroupRequest]
+type LfgService_SubscribeToApplicationsServer = grpc.ServerStreamingServer[GroupApplication]
 
 // LfgService_ServiceDesc is the grpc.ServiceDesc for LfgService service.
 // It's only intended for direct use with grpc.RegisterService,
