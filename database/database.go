@@ -121,7 +121,7 @@ func (db *DB) DeleteApplication(ctx context.Context, applicationId string) error
 }
 
 func (db *DB) ListApplications(ctx context.Context, groupId string) ([]*pb.GroupApplication, error) {
-	rows, err := db.db.QueryContext(ctx, `SELECT id, account_name FROM applications WHERE group_id = ?`, groupId)
+	rows, err := db.db.QueryContext(ctx, `SELECT id, account_name, group_id FROM applications WHERE group_id = ?`, groupId)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (db *DB) ListApplications(ctx context.Context, groupId string) ([]*pb.Group
 	var applications []*pb.GroupApplication
 	for rows.Next() {
 		var application pb.GroupApplication
-		if err := rows.Scan(&application.Id, &application.AccountName); err != nil {
+		if err := rows.Scan(&application.Id, &application.AccountName, &application.GroupId); err != nil {
 			return nil, err
 		}
 		applications = append(applications, &application)

@@ -211,7 +211,7 @@ func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 
 	application := &pb.GroupApplication{
 		AccountName: clientInfo.AccountID,
-		GroupId:     req.GroupId, // Add this line
+		GroupId:     req.GroupId,
 	}
 
 	applications, err := s.db.ListApplications(ctx, req.GroupId)
