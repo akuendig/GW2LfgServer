@@ -16,10 +16,7 @@ import (
 type Server struct {
 	pb.UnimplementedLfgServiceServer
 
-	groups            *syncmap.Map[string, *pb.Group]
-	groupsSubscribers *syncmap.Map[string, chan *pb.GroupsUpdate]
-
-	applications            *syncmap.Map[string, []*pb.GroupApplication]
+	groupsSubscribers       *syncmap.Map[string, chan *pb.GroupsUpdate]
 	applicationsSubscribers *syncmap.Map[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]]
 
 	db *database.DB
@@ -27,9 +24,7 @@ type Server struct {
 
 func NewServer(db *database.DB) *Server {
 	return &Server{
-		groups:                  syncmap.New[string, *pb.Group](),
 		groupsSubscribers:       syncmap.New[string, chan *pb.GroupsUpdate](),
-		applications:            syncmap.New[string, []*pb.GroupApplication](),
 		applicationsSubscribers: syncmap.New[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]](),
 		db:                      db,
 	}
@@ -74,7 +69,12 @@ func (s *Server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
 
-	for _, group := range s.groups.Snapshot() {
+	groups, err := s.db.ListGroups(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to list groups")
+	}
+
+	for _, group := range groups {
 		if group.CreatorId == clientInfo.AccountID {
 			return nil, status.Error(codes.PermissionDenied, "Already owns a group")
 		}
@@ -89,8 +89,6 @@ func (s *Server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*
 		KillProofMinimum: req.KillProofMinimum,
 		CreatedAtSec:     time.Now().Unix(),
 	}
-
-	s.groups.Set(group.Id, group)
 
 	// Save to database
 	if err := s.db.SaveGroup(ctx, group); err != nil {
@@ -116,11 +114,13 @@ func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
 
-	group, exists := s.groups.Get(req.Group.Id)
-	if group == nil || !exists {
+	group, err := s.db.GetGroup(ctx, req.Group.Id)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to get group: %v", err)
+	}
+	if group == nil {
 		return nil, status.Error(codes.NotFound, "Group not found")
 	}
-
 	if clientInfo.AccountID != group.CreatorId {
 		return nil, status.Error(codes.PermissionDenied, "Not group creator")
 	}
@@ -128,8 +128,6 @@ func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*
 	group.Title = req.Group.Title
 	group.KillProofId = req.Group.KillProofId
 	group.KillProofMinimum = req.Group.KillProofMinimum
-
-	s.groups.Set(group.Id, group)
 
 	// Save to database
 	if err := s.db.SaveGroup(ctx, group); err != nil {
@@ -155,17 +153,17 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
 
-	group, exists := s.groups.Get(req.GroupId)
-	if group == nil || !exists {
-		return &pb.DeleteGroupResponse{}, nil
+	group, err := s.db.GetGroup(ctx, req.GroupId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to get group: %v", err)
 	}
-
+	if group == nil {
+		return nil, nil
+	}
 	if clientInfo.AccountID != group.CreatorId {
 		return nil, status.Error(codes.PermissionDenied, "Not group creator")
 	}
 
-	s.groups.Delete(group.Id)
-	s.applications.Delete(group.Id)
 	subscribers, ok := s.applicationsSubscribers.Delete(group.Id)
 	if ok {
 		for _, ch := range subscribers.Snapshot() {
@@ -190,7 +188,10 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 
 func (s *Server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb.ListGroupsResponse, error) {
 	log.Println("ListGroups")
-	groups := s.groups.Snapshot()
+	groups, err := s.db.ListGroups(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to list groups")
+	}
 	return &pb.ListGroupsResponse{
 		Groups: groups,
 	}, nil
@@ -203,8 +204,11 @@ func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
 
-	group, exists := s.groups.Get(req.GroupId)
-	if group == nil || !exists {
+	group, err := s.db.GetGroup(ctx, req.GroupId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to get group: %v", err)
+	}
+	if group == nil {
 		return nil, status.Error(codes.NotFound, "Group not found")
 	}
 
@@ -214,20 +218,26 @@ func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 
 	application := &pb.GroupApplication{
 		AccountName: clientInfo.AccountID,
+		GroupId:     req.GroupId, // Add this line
 	}
-	s.applications.Update(group.Id, func(applications []*pb.GroupApplication, ok bool) ([]*pb.GroupApplication, bool) {
-		if !ok {
-			applications = []*pb.GroupApplication{}
+
+	applications, err := s.db.ListApplications(ctx, req.GroupId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to list applications")
+	}
+
+	// Check if already applied
+	for _, app := range applications {
+		if app.AccountName == clientInfo.AccountID {
+			return nil, status.Error(codes.PermissionDenied, "Already applied")
 		}
-		// Check if already applied
-		for _, app := range applications {
-			if app.AccountName == clientInfo.AccountID {
-				return applications, true
-			}
-		}
-		applications = append(applications, application)
-		return applications, true
-	})
+	}
+
+	// Save to database
+	if err := s.db.SaveApplication(ctx, application, group.Id); err != nil {
+		return nil, status.Error(codes.Internal, "Failed to create application")
+	}
+
 	s.broadcastApplication(group.Id, &pb.GroupApplicationUpdate{
 		Update: &pb.GroupApplicationUpdate_NewApplication{
 			NewApplication: application,
@@ -246,41 +256,23 @@ func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
 
-	group, exists := s.groups.Get(req.GroupId)
-	if group == nil || !exists {
-		return nil, status.Error(codes.NotFound, "Group not found")
+	application, err := s.db.GetApplication(ctx, req.ApplicationId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Failed to get application: %v", err)
 	}
-
-	applications, _ := s.applications.Get(req.GroupId)
-	var application *pb.GroupApplication
-	for _, app := range applications {
-		if app.Id == req.ApplicationId {
-			application = app
-			break
-		}
-	}
-
 	if application == nil {
 		return nil, status.Error(codes.NotFound, "Application not found")
 	}
-
 	if clientInfo.AccountID != application.AccountName {
 		return nil, status.Error(codes.PermissionDenied, "Not application owner")
 	}
 
-	s.applications.Update(group.Id, func(applications []*pb.GroupApplication, ok bool) ([]*pb.GroupApplication, bool) {
-		if !ok {
-			return applications, true
-		}
-		for i, app := range applications {
-			if app.Id == req.ApplicationId {
-				applications = append(applications[:i], applications[i+1:]...)
-				break
-			}
-		}
-		return applications, true
-	})
-	s.broadcastApplication(group.Id, &pb.GroupApplicationUpdate{
+	// Delete from database
+	if err := s.db.DeleteApplication(ctx, req.ApplicationId); err != nil {
+		return nil, status.Error(codes.Internal, "Failed to delete application")
+	}
+
+	s.broadcastApplication(application.GroupId, &pb.GroupApplicationUpdate{ // Update this line
 		Update: &pb.GroupApplicationUpdate_RemovedApplicationId{
 			RemovedApplicationId: application.Id,
 		},
@@ -296,8 +288,8 @@ func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
 
-	group, exists := s.groups.Get(req.GroupId)
-	if group == nil || !exists {
+	group, err := s.db.GetGroup(ctx, req.GroupId)
+	if err != nil {
 		return nil, status.Error(codes.NotFound, "Group not found")
 	}
 
@@ -305,9 +297,9 @@ func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 		return nil, status.Error(codes.PermissionDenied, "Not group creator")
 	}
 
-	applications, exists := s.applications.Get(req.GroupId)
-	if !exists {
-		return &pb.ListGroupApplicationsResponse{}, nil
+	applications, err := s.db.ListApplications(ctx, req.GroupId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to list applications")
 	}
 
 	return &pb.ListGroupApplicationsResponse{
@@ -322,8 +314,8 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 		return status.Error(codes.PermissionDenied, "Not authenticated")
 	}
 
-	group, exists := s.groups.Get(req.GroupId)
-	if group == nil || !exists {
+	group, err := s.db.GetGroup(stream.Context(), req.GroupId)
+	if err != nil {
 		return status.Error(codes.NotFound, "Group not found")
 	}
 

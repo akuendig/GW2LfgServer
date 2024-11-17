@@ -34,6 +34,7 @@ type Config struct {
 	MaxRecvMsgSize     int
 	MaxSendMsgSize     int
 	MaxConcurrentConns int
+	DatabasePath       string
 }
 
 func loadConfig() (*Config, error) {
@@ -75,6 +76,13 @@ func loadConfig() (*Config, error) {
 		slog.Warn("MAX_CONN_COUNT environment variable not set, using default value 1000")
 	}
 
+	dbPath := "file::memory:?cache=shared"
+	if dp := os.Getenv("DATABASE_PATH"); dp != "" {
+		dbPath = dp
+	} else {
+		slog.Warn("DATABASE_PATH environment variable not set, using in-memory database")
+	}
+
 	return &Config{
 		Host:               host,
 		Port:               port,
@@ -85,6 +93,7 @@ func loadConfig() (*Config, error) {
 		MaxRecvMsgSize:     4 * 1024 * 1024, // 4MB
 		MaxSendMsgSize:     4 * 1024 * 1024, // 4MB
 		MaxConcurrentConns: maxConns,
+		DatabasePath:       dbPath,
 	}, nil
 }
 
@@ -103,7 +112,7 @@ func main() {
 	}
 
 	// Initialize database
-	db, err := database.New("groups.db")
+	db, err := database.New(config.DatabasePath)
 	if err != nil {
 		slog.Error("Failed to initialize database", "error", err)
 		return
