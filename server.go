@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type server struct {
+type Server struct {
 	pb.UnimplementedLfgServiceServer
 
 	groups            *syncmap.Map[string, *pb.Group]
@@ -22,7 +22,7 @@ type server struct {
 	applicationsSubscribers *syncmap.Map[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]]
 }
 
-func (s *server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgService_SubscribeGroupsServer) error {
+func (s *Server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgService_SubscribeGroupsServer) error {
 	log.Println("SubscribeGroups")
 	clientInfo := clientInfoFromContext(stream.Context())
 	if clientInfo == nil {
@@ -54,7 +54,7 @@ func (s *server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgSe
 	}
 }
 
-func (s *server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*pb.CreateGroupResponse, error) {
+func (s *Server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*pb.CreateGroupResponse, error) {
 	log.Println("CreateGroup")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
@@ -96,7 +96,7 @@ func (s *server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*
 	}, nil
 }
 
-func (s *server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*pb.UpdateGroupResponse, error) {
+func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*pb.UpdateGroupResponse, error) {
 	log.Println("UpdateGroup")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
@@ -135,7 +135,7 @@ func (s *server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*
 	}, nil
 }
 
-func (s *server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*pb.DeleteGroupResponse, error) {
+func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*pb.DeleteGroupResponse, error) {
 	log.Println("DeleteGroup")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
@@ -175,7 +175,7 @@ func (s *server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 	return &pb.DeleteGroupResponse{}, nil
 }
 
-func (s *server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb.ListGroupsResponse, error) {
+func (s *Server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb.ListGroupsResponse, error) {
 	log.Println("ListGroups")
 	groups := s.groups.Snapshot()
 	return &pb.ListGroupsResponse{
@@ -183,7 +183,7 @@ func (s *server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb
 	}, nil
 }
 
-func (s *server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroupApplicationRequest) (*pb.CreateGroupApplicationResponse, error) {
+func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroupApplicationRequest) (*pb.CreateGroupApplicationResponse, error) {
 	log.Println("CreateGroupApplication")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
@@ -226,7 +226,7 @@ func (s *server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 	}, nil
 }
 
-func (s *server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroupApplicationRequest) (*pb.DeleteGroupApplicationResponse, error) {
+func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroupApplicationRequest) (*pb.DeleteGroupApplicationResponse, error) {
 	log.Println("DeleteGroupApplication")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
@@ -276,7 +276,7 @@ func (s *server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 	return &pb.DeleteGroupApplicationResponse{}, nil
 }
 
-func (s *server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApplicationsRequest) (*pb.ListGroupApplicationsResponse, error) {
+func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApplicationsRequest) (*pb.ListGroupApplicationsResponse, error) {
 	log.Println("ListGroupApplications")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
@@ -302,7 +302,7 @@ func (s *server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 	}, nil
 }
 
-func (s *server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRequest, stream pb.LfgService_SubscribeGroupApplicationsServer) error {
+func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRequest, stream pb.LfgService_SubscribeGroupApplicationsServer) error {
 	log.Println("SubscribeGroupApplications")
 	clientInfo := clientInfoFromContext(stream.Context())
 	if clientInfo == nil {
@@ -350,7 +350,7 @@ func (s *server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 	}
 }
 
-func (s *server) broadcast(update *pb.GroupsUpdate) {
+func (s *Server) broadcast(update *pb.GroupsUpdate) {
 	for _, ch := range s.groupsSubscribers.Snapshot() {
 		select {
 		case ch <- update:
@@ -360,7 +360,7 @@ func (s *server) broadcast(update *pb.GroupsUpdate) {
 	}
 }
 
-func (s *server) broadcastApplication(groupId string, update *pb.GroupApplicationUpdate) {
+func (s *Server) broadcastApplication(groupId string, update *pb.GroupApplicationUpdate) {
 	subscribers, ok := s.applicationsSubscribers.Get(groupId)
 	if !ok {
 		return
@@ -374,12 +374,12 @@ func (s *server) broadcastApplication(groupId string, update *pb.GroupApplicatio
 	}
 }
 
-func (s *server) saveGroup(ctx context.Context, group *pb.Group) error {
+func (s *Server) saveGroup(ctx context.Context, group *pb.Group) error {
 	// Save to database
 	return nil
 }
 
-func (s *server) deleteGroup(ctx context.Context, groupId string) error {
+func (s *Server) deleteGroup(ctx context.Context, groupId string) error {
 	// Save to database
 	return nil
 }
