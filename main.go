@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -25,6 +25,7 @@ import (
 )
 
 type Config struct {
+	Host               string
 	Port               int
 	MetricsPort        int
 	MaxConnAge         time.Duration
@@ -37,21 +38,32 @@ type Config struct {
 
 func loadConfig() (*Config, error) {
 	// Get PORT from Render environment (required)
-	port := os.Getenv("PORT")
-	if port == "" {
-		return nil, fmt.Errorf("PORT environment variable is required")
+	port := 50051
+	if p := os.Getenv("METRICS_PORT"); p != "" {
+		portNum, err := strconv.Atoi(p)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PORT value: %w", err)
+		}
+		port = portNum
+	} else {
+		slog.Warn("PORT environment variable not set, using default port 50051")
 	}
-	portNum, err := strconv.Atoi(port)
-	if err != nil {
-		return nil, fmt.Errorf("invalid PORT value: %w", err)
+
+	host := "127.0.0.1"
+	if h := os.Getenv("RENDER"); h != "" {
+		host = ""
 	}
 
 	// Get optional configs with defaults
 	metricsPort := 9090
 	if mp := os.Getenv("METRICS_PORT"); mp != "" {
-		if mpNum, err := strconv.Atoi(mp); err == nil {
-			metricsPort = mpNum
+		portNum, err := strconv.Atoi(mp)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PORT value: %w", err)
 		}
+		metricsPort = portNum
+	} else {
+		slog.Warn("METRICS_PORT environment variable not set, metrics server will not be started")
 	}
 
 	maxConns := 1000
@@ -59,10 +71,13 @@ func loadConfig() (*Config, error) {
 		if mcNum, err := strconv.Atoi(mc); err == nil {
 			maxConns = mcNum
 		}
+	} else {
+		slog.Warn("MAX_CONN_COUNT environment variable not set, using default value 1000")
 	}
 
 	return &Config{
-		Port:               portNum,
+		Host:               host,
+		Port:               port,
 		MetricsPort:        metricsPort,
 		MaxConnAge:         time.Hour,
 		KeepAliveTime:      time.Minute * 2,
@@ -83,7 +98,8 @@ func main() {
 	// Load configuration
 	config, err := loadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		slog.Error("Failed to load configuration", "error", err)
+		return
 	}
 
 	// Configure keepalive parameters
@@ -146,7 +162,7 @@ func main() {
 	if config.MetricsPort > 0 {
 		go func() {
 			if err := startMetricsServer(config.MetricsPort); err != nil {
-				log.Printf("Failed to start metrics server: %v", err)
+				slog.Warn("Failed to start metrics server", "error", err)
 			}
 		}()
 	}
@@ -161,14 +177,16 @@ func main() {
 
 	// Start HTTP server
 	httpServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", config.Port),
+		Addr:    fmt.Sprintf("%s:%d", config.Host, config.Port),
 		Handler: wrappedGrpc,
 	}
 
-	log.Printf("Starting server on %s", httpServer.Addr)
-	log.Printf("Listing the following resources: %v", grpcweb.ListGRPCResources(grpcServer))
+	slog.Info(
+		"Starting server",
+		"address", httpServer.Addr,
+		"resources", grpcweb.ListGRPCResources(grpcServer))
 	if err := httpServer.ListenAndServe(); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		slog.Error("failed to serve: %v", "error", err)
 	}
 }
 
