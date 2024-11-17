@@ -88,7 +88,7 @@ func loadConfig() (*Config, error) {
 		Port:               port,
 		MetricsPort:        metricsPort,
 		MaxConnAge:         time.Hour,
-		KeepAliveTime:      time.Minute * 2,
+		KeepAliveTime:      time.Hour,
 		KeepAliveTimeout:   time.Second * 20,
 		MaxRecvMsgSize:     4 * 1024 * 1024, // 4MB
 		MaxSendMsgSize:     4 * 1024 * 1024, // 4MB

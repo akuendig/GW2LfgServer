@@ -164,13 +164,6 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 		return nil, status.Error(codes.PermissionDenied, "Not group creator")
 	}
 
-	subscribers, ok := s.applicationsSubscribers.Delete(group.Id)
-	if ok {
-		for _, ch := range subscribers.Snapshot() {
-			close(ch)
-		}
-	}
-
 	// Delete from database
 	if err := s.db.DeleteGroup(ctx, group.Id); err != nil {
 		return nil, status.Error(codes.Internal, "Failed to delete group")
