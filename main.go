@@ -12,8 +12,8 @@ import (
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 
+	"gw2lfgserver/database"
 	pb "gw2lfgserver/pb"
-	"gw2lfgserver/syncmap"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -102,6 +102,13 @@ func main() {
 		return
 	}
 
+	// Initialize database
+	db, err := database.New("groups.db")
+	if err != nil {
+		slog.Error("Failed to initialize database", "error", err)
+		return
+	}
+
 	// Configure keepalive parameters
 	kasp := keepalive.ServerParameters{
 		MaxConnectionAge: config.MaxConnAge,
@@ -142,12 +149,7 @@ func main() {
 	)
 
 	// Create and register the LFG service
-	server := &Server{
-		groups:                  syncmap.New[string, *pb.Group](),
-		groupsSubscribers:       syncmap.New[string, chan *pb.GroupsUpdate](),
-		applications:            syncmap.New[string, []*pb.GroupApplication](),
-		applicationsSubscribers: syncmap.New[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]](),
-	}
+	server := NewServer(db)
 	pb.RegisterLfgServiceServer(grpcServer, server)
 
 	// Setup health check required by Render

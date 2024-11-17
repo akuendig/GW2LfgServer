@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"gw2lfgserver/database"
 	pb "gw2lfgserver/pb"
 	"gw2lfgserver/syncmap"
 	"log"
@@ -20,6 +21,18 @@ type Server struct {
 
 	applications            *syncmap.Map[string, []*pb.GroupApplication]
 	applicationsSubscribers *syncmap.Map[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]]
+
+	db *database.DB
+}
+
+func NewServer(db *database.DB) *Server {
+	return &Server{
+		groups:                  syncmap.New[string, *pb.Group](),
+		groupsSubscribers:       syncmap.New[string, chan *pb.GroupsUpdate](),
+		applications:            syncmap.New[string, []*pb.GroupApplication](),
+		applicationsSubscribers: syncmap.New[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]](),
+		db:                      db,
+	}
 }
 
 func (s *Server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgService_SubscribeGroupsServer) error {
@@ -80,7 +93,7 @@ func (s *Server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*
 	s.groups.Set(group.Id, group)
 
 	// Save to database
-	if err := s.saveGroup(ctx, group); err != nil {
+	if err := s.db.SaveGroup(ctx, group); err != nil {
 		return nil, status.Error(codes.Internal, "Failed to create group")
 	}
 
@@ -119,7 +132,7 @@ func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*
 	s.groups.Set(group.Id, group)
 
 	// Save to database
-	if err := s.saveGroup(ctx, group); err != nil {
+	if err := s.db.SaveGroup(ctx, group); err != nil {
 		return nil, status.Error(codes.Internal, "Failed to update group")
 	}
 
@@ -161,7 +174,7 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 	}
 
 	// Delete from database
-	if err := s.deleteGroup(ctx, group.Id); err != nil {
+	if err := s.db.DeleteGroup(ctx, group.Id); err != nil {
 		return nil, status.Error(codes.Internal, "Failed to delete group")
 	}
 
@@ -372,14 +385,4 @@ func (s *Server) broadcastApplication(groupId string, update *pb.GroupApplicatio
 			// Channel full, skip
 		}
 	}
-}
-
-func (s *Server) saveGroup(ctx context.Context, group *pb.Group) error {
-	// Save to database
-	return nil
-}
-
-func (s *Server) deleteGroup(ctx context.Context, groupId string) error {
-	// Save to database
-	return nil
 }
