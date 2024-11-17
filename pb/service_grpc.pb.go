@@ -19,28 +19,32 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LfgService_CreateGroup_FullMethodName             = "/gw2lfg.LfgService/CreateGroup"
-	LfgService_UpdateGroup_FullMethodName             = "/gw2lfg.LfgService/UpdateGroup"
-	LfgService_ListGroups_FullMethodName              = "/gw2lfg.LfgService/ListGroups"
-	LfgService_DeleteGroup_FullMethodName             = "/gw2lfg.LfgService/DeleteGroup"
-	LfgService_SubscribeGroups_FullMethodName         = "/gw2lfg.LfgService/SubscribeGroups"
-	LfgService_JoinGroup_FullMethodName               = "/gw2lfg.LfgService/JoinGroup"
-	LfgService_SubscribeToApplications_FullMethodName = "/gw2lfg.LfgService/SubscribeToApplications"
+	LfgService_CreateGroup_FullMethodName                = "/gw2lfg.LfgService/CreateGroup"
+	LfgService_UpdateGroup_FullMethodName                = "/gw2lfg.LfgService/UpdateGroup"
+	LfgService_ListGroups_FullMethodName                 = "/gw2lfg.LfgService/ListGroups"
+	LfgService_DeleteGroup_FullMethodName                = "/gw2lfg.LfgService/DeleteGroup"
+	LfgService_SubscribeGroups_FullMethodName            = "/gw2lfg.LfgService/SubscribeGroups"
+	LfgService_CreateGroupApplication_FullMethodName     = "/gw2lfg.LfgService/CreateGroupApplication"
+	LfgService_UpdateGroupApplication_FullMethodName     = "/gw2lfg.LfgService/UpdateGroupApplication"
+	LfgService_ListGroupApplications_FullMethodName      = "/gw2lfg.LfgService/ListGroupApplications"
+	LfgService_DeleteGroupApplication_FullMethodName     = "/gw2lfg.LfgService/DeleteGroupApplication"
+	LfgService_SubscribeGroupApplications_FullMethodName = "/gw2lfg.LfgService/SubscribeGroupApplications"
 )
 
 // LfgServiceClient is the client API for LfgService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LfgServiceClient interface {
-	// Operations that don't need streaming
 	CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*CreateGroupResponse, error)
 	UpdateGroup(ctx context.Context, in *UpdateGroupRequest, opts ...grpc.CallOption) (*UpdateGroupResponse, error)
 	ListGroups(ctx context.Context, in *ListGroupsRequest, opts ...grpc.CallOption) (*ListGroupsResponse, error)
 	DeleteGroup(ctx context.Context, in *DeleteGroupRequest, opts ...grpc.CallOption) (*DeleteGroupResponse, error)
 	SubscribeGroups(ctx context.Context, in *SubscribeGroupsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupsUpdate], error)
-	JoinGroup(ctx context.Context, in *JoinGroupRequest, opts ...grpc.CallOption) (*JoinGroupResponse, error)
-	// Group creator's stream to receive applications
-	SubscribeToApplications(ctx context.Context, in *SubscribeToApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupApplication], error)
+	CreateGroupApplication(ctx context.Context, in *CreateGroupApplicationRequest, opts ...grpc.CallOption) (*CreateGroupApplicationResponse, error)
+	UpdateGroupApplication(ctx context.Context, in *UpdateGroupApplicationRequest, opts ...grpc.CallOption) (*UpdateGroupApplicationResponse, error)
+	ListGroupApplications(ctx context.Context, in *ListGroupApplicationsRequest, opts ...grpc.CallOption) (*ListGroupApplicationsResponse, error)
+	DeleteGroupApplication(ctx context.Context, in *DeleteGroupApplicationRequest, opts ...grpc.CallOption) (*DeleteGroupApplicationResponse, error)
+	SubscribeGroupApplications(ctx context.Context, in *SubscribeGroupApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupApplicationUpdate], error)
 }
 
 type lfgServiceClient struct {
@@ -110,23 +114,53 @@ func (c *lfgServiceClient) SubscribeGroups(ctx context.Context, in *SubscribeGro
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type LfgService_SubscribeGroupsClient = grpc.ServerStreamingClient[GroupsUpdate]
 
-func (c *lfgServiceClient) JoinGroup(ctx context.Context, in *JoinGroupRequest, opts ...grpc.CallOption) (*JoinGroupResponse, error) {
+func (c *lfgServiceClient) CreateGroupApplication(ctx context.Context, in *CreateGroupApplicationRequest, opts ...grpc.CallOption) (*CreateGroupApplicationResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(JoinGroupResponse)
-	err := c.cc.Invoke(ctx, LfgService_JoinGroup_FullMethodName, in, out, cOpts...)
+	out := new(CreateGroupApplicationResponse)
+	err := c.cc.Invoke(ctx, LfgService_CreateGroupApplication_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *lfgServiceClient) SubscribeToApplications(ctx context.Context, in *SubscribeToApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupApplication], error) {
+func (c *lfgServiceClient) UpdateGroupApplication(ctx context.Context, in *UpdateGroupApplicationRequest, opts ...grpc.CallOption) (*UpdateGroupApplicationResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &LfgService_ServiceDesc.Streams[1], LfgService_SubscribeToApplications_FullMethodName, cOpts...)
+	out := new(UpdateGroupApplicationResponse)
+	err := c.cc.Invoke(ctx, LfgService_UpdateGroupApplication_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[SubscribeToApplicationsRequest, GroupApplication]{ClientStream: stream}
+	return out, nil
+}
+
+func (c *lfgServiceClient) ListGroupApplications(ctx context.Context, in *ListGroupApplicationsRequest, opts ...grpc.CallOption) (*ListGroupApplicationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListGroupApplicationsResponse)
+	err := c.cc.Invoke(ctx, LfgService_ListGroupApplications_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lfgServiceClient) DeleteGroupApplication(ctx context.Context, in *DeleteGroupApplicationRequest, opts ...grpc.CallOption) (*DeleteGroupApplicationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteGroupApplicationResponse)
+	err := c.cc.Invoke(ctx, LfgService_DeleteGroupApplication_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *lfgServiceClient) SubscribeGroupApplications(ctx context.Context, in *SubscribeGroupApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupApplicationUpdate], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &LfgService_ServiceDesc.Streams[1], LfgService_SubscribeGroupApplications_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SubscribeGroupApplicationsRequest, GroupApplicationUpdate]{ClientStream: stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -137,21 +171,22 @@ func (c *lfgServiceClient) SubscribeToApplications(ctx context.Context, in *Subs
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LfgService_SubscribeToApplicationsClient = grpc.ServerStreamingClient[GroupApplication]
+type LfgService_SubscribeGroupApplicationsClient = grpc.ServerStreamingClient[GroupApplicationUpdate]
 
 // LfgServiceServer is the server API for LfgService service.
 // All implementations must embed UnimplementedLfgServiceServer
 // for forward compatibility.
 type LfgServiceServer interface {
-	// Operations that don't need streaming
 	CreateGroup(context.Context, *CreateGroupRequest) (*CreateGroupResponse, error)
 	UpdateGroup(context.Context, *UpdateGroupRequest) (*UpdateGroupResponse, error)
 	ListGroups(context.Context, *ListGroupsRequest) (*ListGroupsResponse, error)
 	DeleteGroup(context.Context, *DeleteGroupRequest) (*DeleteGroupResponse, error)
 	SubscribeGroups(*SubscribeGroupsRequest, grpc.ServerStreamingServer[GroupsUpdate]) error
-	JoinGroup(context.Context, *JoinGroupRequest) (*JoinGroupResponse, error)
-	// Group creator's stream to receive applications
-	SubscribeToApplications(*SubscribeToApplicationsRequest, grpc.ServerStreamingServer[GroupApplication]) error
+	CreateGroupApplication(context.Context, *CreateGroupApplicationRequest) (*CreateGroupApplicationResponse, error)
+	UpdateGroupApplication(context.Context, *UpdateGroupApplicationRequest) (*UpdateGroupApplicationResponse, error)
+	ListGroupApplications(context.Context, *ListGroupApplicationsRequest) (*ListGroupApplicationsResponse, error)
+	DeleteGroupApplication(context.Context, *DeleteGroupApplicationRequest) (*DeleteGroupApplicationResponse, error)
+	SubscribeGroupApplications(*SubscribeGroupApplicationsRequest, grpc.ServerStreamingServer[GroupApplicationUpdate]) error
 	mustEmbedUnimplementedLfgServiceServer()
 }
 
@@ -177,11 +212,20 @@ func (UnimplementedLfgServiceServer) DeleteGroup(context.Context, *DeleteGroupRe
 func (UnimplementedLfgServiceServer) SubscribeGroups(*SubscribeGroupsRequest, grpc.ServerStreamingServer[GroupsUpdate]) error {
 	return status.Errorf(codes.Unimplemented, "method SubscribeGroups not implemented")
 }
-func (UnimplementedLfgServiceServer) JoinGroup(context.Context, *JoinGroupRequest) (*JoinGroupResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method JoinGroup not implemented")
+func (UnimplementedLfgServiceServer) CreateGroupApplication(context.Context, *CreateGroupApplicationRequest) (*CreateGroupApplicationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateGroupApplication not implemented")
 }
-func (UnimplementedLfgServiceServer) SubscribeToApplications(*SubscribeToApplicationsRequest, grpc.ServerStreamingServer[GroupApplication]) error {
-	return status.Errorf(codes.Unimplemented, "method SubscribeToApplications not implemented")
+func (UnimplementedLfgServiceServer) UpdateGroupApplication(context.Context, *UpdateGroupApplicationRequest) (*UpdateGroupApplicationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateGroupApplication not implemented")
+}
+func (UnimplementedLfgServiceServer) ListGroupApplications(context.Context, *ListGroupApplicationsRequest) (*ListGroupApplicationsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListGroupApplications not implemented")
+}
+func (UnimplementedLfgServiceServer) DeleteGroupApplication(context.Context, *DeleteGroupApplicationRequest) (*DeleteGroupApplicationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteGroupApplication not implemented")
+}
+func (UnimplementedLfgServiceServer) SubscribeGroupApplications(*SubscribeGroupApplicationsRequest, grpc.ServerStreamingServer[GroupApplicationUpdate]) error {
+	return status.Errorf(codes.Unimplemented, "method SubscribeGroupApplications not implemented")
 }
 func (UnimplementedLfgServiceServer) mustEmbedUnimplementedLfgServiceServer() {}
 func (UnimplementedLfgServiceServer) testEmbeddedByValue()                    {}
@@ -287,34 +331,88 @@ func _LfgService_SubscribeGroups_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type LfgService_SubscribeGroupsServer = grpc.ServerStreamingServer[GroupsUpdate]
 
-func _LfgService_JoinGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(JoinGroupRequest)
+func _LfgService_CreateGroupApplication_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateGroupApplicationRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(LfgServiceServer).JoinGroup(ctx, in)
+		return srv.(LfgServiceServer).CreateGroupApplication(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: LfgService_JoinGroup_FullMethodName,
+		FullMethod: LfgService_CreateGroupApplication_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LfgServiceServer).JoinGroup(ctx, req.(*JoinGroupRequest))
+		return srv.(LfgServiceServer).CreateGroupApplication(ctx, req.(*CreateGroupApplicationRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _LfgService_SubscribeToApplications_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribeToApplicationsRequest)
+func _LfgService_UpdateGroupApplication_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateGroupApplicationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LfgServiceServer).UpdateGroupApplication(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LfgService_UpdateGroupApplication_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LfgServiceServer).UpdateGroupApplication(ctx, req.(*UpdateGroupApplicationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LfgService_ListGroupApplications_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListGroupApplicationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LfgServiceServer).ListGroupApplications(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LfgService_ListGroupApplications_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LfgServiceServer).ListGroupApplications(ctx, req.(*ListGroupApplicationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LfgService_DeleteGroupApplication_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteGroupApplicationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LfgServiceServer).DeleteGroupApplication(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LfgService_DeleteGroupApplication_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LfgServiceServer).DeleteGroupApplication(ctx, req.(*DeleteGroupApplicationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LfgService_SubscribeGroupApplications_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SubscribeGroupApplicationsRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(LfgServiceServer).SubscribeToApplications(m, &grpc.GenericServerStream[SubscribeToApplicationsRequest, GroupApplication]{ServerStream: stream})
+	return srv.(LfgServiceServer).SubscribeGroupApplications(m, &grpc.GenericServerStream[SubscribeGroupApplicationsRequest, GroupApplicationUpdate]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type LfgService_SubscribeToApplicationsServer = grpc.ServerStreamingServer[GroupApplication]
+type LfgService_SubscribeGroupApplicationsServer = grpc.ServerStreamingServer[GroupApplicationUpdate]
 
 // LfgService_ServiceDesc is the grpc.ServiceDesc for LfgService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -340,8 +438,20 @@ var LfgService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _LfgService_DeleteGroup_Handler,
 		},
 		{
-			MethodName: "JoinGroup",
-			Handler:    _LfgService_JoinGroup_Handler,
+			MethodName: "CreateGroupApplication",
+			Handler:    _LfgService_CreateGroupApplication_Handler,
+		},
+		{
+			MethodName: "UpdateGroupApplication",
+			Handler:    _LfgService_UpdateGroupApplication_Handler,
+		},
+		{
+			MethodName: "ListGroupApplications",
+			Handler:    _LfgService_ListGroupApplications_Handler,
+		},
+		{
+			MethodName: "DeleteGroupApplication",
+			Handler:    _LfgService_DeleteGroupApplication_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -351,8 +461,8 @@ var LfgService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 		{
-			StreamName:    "SubscribeToApplications",
-			Handler:       _LfgService_SubscribeToApplications_Handler,
+			StreamName:    "SubscribeGroupApplications",
+			Handler:       _LfgService_SubscribeGroupApplications_Handler,
 			ServerStreams: true,
 		},
 	},
