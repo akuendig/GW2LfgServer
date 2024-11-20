@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	pb "gw2lfgserver/pb"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // DB represents a database connection with CRUD operations for groups and applications

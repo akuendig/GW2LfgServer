@@ -10,6 +10,9 @@ import (
 	"time"
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/ratelimit"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 
 	"gw2lfgserver/database"
@@ -103,6 +106,34 @@ func setupHealthCheck(grpcServer *grpc.Server) {
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 }
 
+// InterceptorLogger adapts slog logger to interceptor logger.
+// This code is simple enough to be copied and not imported.
+func InterceptorLogger(l *slog.Logger) logging.Logger {
+	return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
+		l.Log(ctx, slog.Level(lvl), msg, fields...)
+	})
+}
+
+// alwaysPassLimiter is an example limiter which implements Limiter interface.
+// It does not limit any request because Limit function always returns false.
+type alwaysPassLimiter struct{}
+
+func (*alwaysPassLimiter) Limit(_ context.Context) error {
+	// Example rate limiter could be implemented using e.g. github.com/juju/ratelimit
+	//	// Take one token per request. This call doesn't block.
+	//	tokenRes := l.tokenBucket.TakeAvailable(1)
+	//
+	//	// When rate limit reached, return specific error for the clients.
+	//	if tokenRes == 0 {
+	//		return fmt.Errorf("APP-XXX: reached Rate-Limiting %d", l.tokenBucket.Available())
+	//	}
+	//
+	//	// Rate limit isn't reached.
+	//	return nil
+	// }
+	return nil
+}
+
 func main() {
 	// Load configuration
 	config, err := loadConfig()
@@ -120,9 +151,10 @@ func main() {
 
 	// Configure keepalive parameters
 	kasp := keepalive.ServerParameters{
-		MaxConnectionAge: config.MaxConnAge,
-		Time:             config.KeepAliveTime,
-		Timeout:          config.KeepAliveTimeout,
+		MaxConnectionIdle: config.KeepAliveTime,
+		MaxConnectionAge:  config.MaxConnAge,
+		Time:              config.KeepAliveTime,
+		Timeout:           config.KeepAliveTimeout,
 	}
 
 	r := keyResolver{}
@@ -146,15 +178,39 @@ func main() {
 			Token:     token,
 		}), nil
 	}
+	// Create unary/stream rateLimiters, based on token bucket here.
+	// You can implement your own rate-limiter for the interface.
+	limiter := &alwaysPassLimiter{}
 
+	loggingOpts := []logging.Option{
+		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
+		// Add any other option (check functions starting with logging.With).
+	}
+	recoveryOpts := []recovery.Option{
+		recovery.WithRecoveryHandler(func(p interface{}) error {
+			return status.Errorf(codes.Internal, "internal server error")
+		}),
+	}
 	// Initialize gRPC server
+	// TODO: Also use proto validate?
 	grpcServer := grpc.NewServer(
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second}),
 		grpc.KeepaliveParams(kasp),
 		grpc.MaxRecvMsgSize(config.MaxRecvMsgSize),
 		grpc.MaxSendMsgSize(config.MaxSendMsgSize),
 		grpc.MaxConcurrentStreams(uint32(config.MaxConcurrentConns)),
-		grpc.ChainUnaryInterceptor(grpc_auth.UnaryServerInterceptor(authFunc)),
-		grpc.ChainStreamInterceptor((grpc_auth.StreamServerInterceptor(authFunc))),
+		grpc.ChainUnaryInterceptor(
+			logging.UnaryServerInterceptor(InterceptorLogger(slog.Default()), loggingOpts...),
+			grpc_auth.UnaryServerInterceptor(authFunc),
+			ratelimit.UnaryServerInterceptor(limiter),
+			recovery.UnaryServerInterceptor(recoveryOpts...),
+		),
+		grpc.ChainStreamInterceptor(
+			logging.StreamServerInterceptor(InterceptorLogger(slog.Default()), loggingOpts...),
+			grpc_auth.StreamServerInterceptor(authFunc),
+			ratelimit.StreamServerInterceptor(limiter),
+			recovery.StreamServerInterceptor(recoveryOpts...),
+		),
 	)
 
 	// Create and register the LFG service

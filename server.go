@@ -5,7 +5,6 @@ import (
 	"gw2lfgserver/database"
 	pb "gw2lfgserver/pb"
 	"gw2lfgserver/syncmap"
-	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,7 +28,6 @@ func NewServer(db *database.DB) *Server {
 }
 
 func (s *Server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgService_SubscribeGroupsServer) error {
-	log.Println("SubscribeGroups")
 	clientInfo := clientInfoFromContext(stream.Context())
 	if clientInfo == nil {
 		return status.Error(codes.PermissionDenied, "Not authenticated")
@@ -54,7 +52,6 @@ func (s *Server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgSe
 				return err
 			}
 		case <-stream.Context().Done():
-			log.Println("SubscribeGroups done")
 			return nil
 		}
 	}
@@ -144,7 +141,6 @@ func mustGetClient(ctx context.Context) *clientInfo {
 }
 
 func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*pb.DeleteGroupResponse, error) {
-	log.Println("DeleteGroup")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
@@ -177,7 +173,6 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 }
 
 func (s *Server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb.ListGroupsResponse, error) {
-	log.Println("ListGroups")
 	groups, err := s.db.ListGroups(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "Failed to list groups")
@@ -238,7 +233,6 @@ func (s *Server) validateApplication(ctx context.Context, groupID, accountID str
 }
 
 func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroupApplicationRequest) (*pb.DeleteGroupApplicationResponse, error) {
-	log.Println("DeleteGroupApplication")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
@@ -270,7 +264,6 @@ func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 }
 
 func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApplicationsRequest) (*pb.ListGroupApplicationsResponse, error) {
-	log.Println("ListGroupApplications")
 	clientInfo := clientInfoFromContext(ctx)
 	if clientInfo == nil {
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
@@ -296,7 +289,6 @@ func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 }
 
 func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRequest, stream pb.LfgService_SubscribeGroupApplicationsServer) error {
-	log.Println("SubscribeGroupApplications")
 	clientInfo := clientInfoFromContext(stream.Context())
 	if clientInfo == nil {
 		return status.Error(codes.PermissionDenied, "Not authenticated")
