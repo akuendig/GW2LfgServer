@@ -112,7 +112,7 @@ func main() {
 	}
 
 	// Initialize database
-	db, err := database.New(config.DatabasePath)
+	db, err := database.New(database.Config{Path: config.DatabasePath})
 	if err != nil {
 		slog.Error("Failed to initialize database", "error", err)
 		return

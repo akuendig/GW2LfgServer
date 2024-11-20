@@ -15,18 +15,16 @@ import (
 
 type Server struct {
 	pb.UnimplementedLfgServiceServer
-
+	db                      *database.DB
 	groupsSubscribers       *syncmap.Map[string, chan *pb.GroupsUpdate]
 	applicationsSubscribers *syncmap.Map[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]]
-
-	db *database.DB
 }
 
 func NewServer(db *database.DB) *Server {
 	return &Server{
+		db:                      db,
 		groupsSubscribers:       syncmap.New[string, chan *pb.GroupsUpdate](),
 		applicationsSubscribers: syncmap.New[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]](),
-		db:                      db,
 	}
 }
 
@@ -62,88 +60,87 @@ func (s *Server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgSe
 	}
 }
 
+// Group Management
 func (s *Server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*pb.CreateGroupResponse, error) {
-	log.Println("CreateGroup")
-	clientInfo := clientInfoFromContext(ctx)
-	if clientInfo == nil {
-		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
+	client := mustGetClient(ctx)
+
+	if err := s.validateNewGroup(ctx, client.AccountID); err != nil {
+		return nil, err
 	}
 
-	groups, err := s.db.ListGroups(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to list groups")
-	}
-
-	for _, group := range groups {
-		if group.CreatorId == clientInfo.AccountID {
-			return nil, status.Error(codes.PermissionDenied, "Already owns a group")
-		}
-	}
-
-	// Create group
 	group := &pb.Group{
 		Id:               uuid.New().String(),
-		CreatorId:        clientInfo.AccountID,
+		CreatorId:        client.AccountID,
 		Title:            req.Title,
 		KillProofId:      req.KillProofId,
 		KillProofMinimum: req.KillProofMinimum,
 		CreatedAtSec:     time.Now().Unix(),
 	}
 
-	// Save to database
 	if err := s.db.SaveGroup(ctx, group); err != nil {
 		return nil, status.Error(codes.Internal, "Failed to create group")
 	}
 
-	// Broadcast to all subscribers
-	s.broadcast(&pb.GroupsUpdate{
-		Update: &pb.GroupsUpdate_NewGroup{
-			NewGroup: group,
-		},
+	s.broadcastGroupUpdate(&pb.GroupsUpdate{
+		Update: &pb.GroupsUpdate_NewGroup{NewGroup: group},
 	})
 
-	return &pb.CreateGroupResponse{
-		Group: group,
-	}, nil
+	return &pb.CreateGroupResponse{Group: group}, nil
 }
 
 func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*pb.UpdateGroupResponse, error) {
-	log.Println("UpdateGroup")
-	clientInfo := clientInfoFromContext(ctx)
-	if clientInfo == nil {
-		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
+	client := mustGetClient(ctx)
+	group := req.GetGroup()
+
+	if err := s.validateGroupOwnership(ctx, group.Id, client.AccountID); err != nil {
+		return nil, err
 	}
 
-	group, err := s.db.GetGroup(ctx, req.Group.Id)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to get group: %v", err)
-	}
-	if group == nil {
-		return nil, status.Error(codes.NotFound, "Group not found")
-	}
-	if clientInfo.AccountID != group.CreatorId {
-		return nil, status.Error(codes.PermissionDenied, "Not group creator")
-	}
-
-	group.Title = req.Group.Title
-	group.KillProofId = req.Group.KillProofId
-	group.KillProofMinimum = req.Group.KillProofMinimum
-
-	// Save to database
 	if err := s.db.SaveGroup(ctx, group); err != nil {
 		return nil, status.Error(codes.Internal, "Failed to update group")
 	}
 
-	// Broadcast to all subscribers
-	s.broadcast(&pb.GroupsUpdate{
-		Update: &pb.GroupsUpdate_UpdatedGroup{
-			UpdatedGroup: group,
-		},
+	s.broadcastGroupUpdate(&pb.GroupsUpdate{
+		Update: &pb.GroupsUpdate_UpdatedGroup{UpdatedGroup: group},
 	})
 
-	return &pb.UpdateGroupResponse{
-		Group: group,
-	}, nil
+	return &pb.UpdateGroupResponse{Group: group}, nil
+}
+
+func (s *Server) validateNewGroup(ctx context.Context, accountID string) error {
+	groups, err := s.db.ListGroups(ctx)
+	if err != nil {
+		return status.Error(codes.Internal, "Failed to validate group creation")
+	}
+
+	for _, group := range groups {
+		if group.CreatorId == accountID {
+			return status.Error(codes.PermissionDenied, "User already owns a group")
+		}
+	}
+	return nil
+}
+
+func (s *Server) validateGroupOwnership(ctx context.Context, groupID, accountID string) error {
+	group, err := s.db.GetGroup(ctx, groupID)
+	if err != nil {
+		return status.Error(codes.Internal, "Failed to validate group ownership")
+	}
+	if group == nil {
+		return status.Error(codes.NotFound, "Group not found")
+	}
+	if group.CreatorId != accountID {
+		return status.Error(codes.PermissionDenied, "Not group owner")
+	}
+	return nil
+}
+
+func mustGetClient(ctx context.Context) *clientInfo {
+	client := clientInfoFromContext(ctx)
+	if client == nil {
+		panic("authentication middleware failed to inject client info")
+	}
+	return client
 }
 
 func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*pb.DeleteGroupResponse, error) {
@@ -170,7 +167,7 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 	}
 
 	// Broadcast to all subscribers
-	s.broadcast(&pb.GroupsUpdate{
+	s.broadcastGroupUpdate(&pb.GroupsUpdate{
 		Update: &pb.GroupsUpdate_RemovedGroupId{
 			RemovedGroupId: group.Id,
 		},
@@ -190,56 +187,54 @@ func (s *Server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb
 	}, nil
 }
 
+// Application Management
 func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroupApplicationRequest) (*pb.CreateGroupApplicationResponse, error) {
-	log.Println("CreateGroupApplication")
-	clientInfo := clientInfoFromContext(ctx)
-	if clientInfo == nil {
-		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
-	}
+	client := mustGetClient(ctx)
 
-	group, err := s.db.GetGroup(ctx, req.GroupId)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Failed to get group: %v", err)
-	}
-	if group == nil {
-		return nil, status.Error(codes.NotFound, "Group not found")
-	}
-
-	if clientInfo.AccountID == group.CreatorId {
-		// return nil, status.Error(codes.PermissionDenied, "Cannot join own group")
+	if err := s.validateApplication(ctx, req.GroupId, client.AccountID); err != nil {
+		return nil, err
 	}
 
 	application := &pb.GroupApplication{
-		AccountName: clientInfo.AccountID,
+		Id:          uuid.New().String(),
+		AccountName: client.AccountID,
 		GroupId:     req.GroupId,
 	}
 
-	applications, err := s.db.ListApplications(ctx, req.GroupId)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to list applications")
-	}
-
-	// Check if already applied
-	for _, app := range applications {
-		if app.AccountName == clientInfo.AccountID {
-			return nil, status.Error(codes.PermissionDenied, "Already applied")
-		}
-	}
-
-	// Save to database
-	if err := s.db.SaveApplication(ctx, application, group.Id); err != nil {
+	if err := s.db.SaveApplication(ctx, application, req.GroupId); err != nil {
 		return nil, status.Error(codes.Internal, "Failed to create application")
 	}
 
-	s.broadcastApplication(group.Id, &pb.GroupApplicationUpdate{
-		Update: &pb.GroupApplicationUpdate_NewApplication{
-			NewApplication: application,
-		},
+	s.broadcastApplicationUpdate(req.GroupId, &pb.GroupApplicationUpdate{
+		Update: &pb.GroupApplicationUpdate_NewApplication{NewApplication: application},
 	})
 
-	return &pb.CreateGroupApplicationResponse{
-		Application: application,
-	}, nil
+	return &pb.CreateGroupApplicationResponse{Application: application}, nil
+}
+
+func (s *Server) validateApplication(ctx context.Context, groupID, accountID string) error {
+	group, err := s.db.GetGroup(ctx, groupID)
+	if err != nil {
+		return status.Error(codes.Internal, "Failed to validate application")
+	}
+	if group == nil {
+		return status.Error(codes.NotFound, "Group not found")
+	}
+	if group.CreatorId == accountID {
+		return status.Error(codes.PermissionDenied, "Cannot apply to own group")
+	}
+
+	applications, err := s.db.ListApplications(ctx, groupID)
+	if err != nil {
+		return status.Error(codes.Internal, "Failed to check existing applications")
+	}
+
+	for _, app := range applications {
+		if app.AccountName == accountID {
+			return status.Error(codes.AlreadyExists, "Already applied to this group")
+		}
+	}
+	return nil
 }
 
 func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroupApplicationRequest) (*pb.DeleteGroupApplicationResponse, error) {
@@ -265,7 +260,7 @@ func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 		return nil, status.Error(codes.Internal, "Failed to delete application")
 	}
 
-	s.broadcastApplication(application.GroupId, &pb.GroupApplicationUpdate{ // Update this line
+	s.broadcastApplicationUpdate(application.GroupId, &pb.GroupApplicationUpdate{ // Update this line
 		Update: &pb.GroupApplicationUpdate_RemovedApplicationId{
 			RemovedApplicationId: application.Id,
 		},
@@ -348,7 +343,7 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 	}
 }
 
-func (s *Server) broadcast(update *pb.GroupsUpdate) {
+func (s *Server) broadcastGroupUpdate(update *pb.GroupsUpdate) {
 	for _, ch := range s.groupsSubscribers.Snapshot() {
 		select {
 		case ch <- update:
@@ -358,7 +353,7 @@ func (s *Server) broadcast(update *pb.GroupsUpdate) {
 	}
 }
 
-func (s *Server) broadcastApplication(groupId string, update *pb.GroupApplicationUpdate) {
+func (s *Server) broadcastApplicationUpdate(groupId string, update *pb.GroupApplicationUpdate) {
 	subscribers, ok := s.applicationsSubscribers.Get(groupId)
 	if !ok {
 		return
