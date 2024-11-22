@@ -6,6 +6,7 @@ import (
 	"gw2lfgserver/database"
 	pb "gw2lfgserver/pb"
 	"gw2lfgserver/syncmap"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,6 +78,7 @@ func (s *Server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*
 
 	savedGroup, err := s.db.SaveGroup(ctx, group)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.SaveGroup", "err", err)
 		return nil, status.Error(codes.Internal, "Failed to create group")
 	}
 
@@ -97,6 +99,7 @@ func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*
 
 	savedGroup, err := s.db.SaveGroup(ctx, group)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.SaveGroup", "err", err)
 		return nil, status.Error(codes.Internal, "Failed to update group")
 	}
 
@@ -110,6 +113,7 @@ func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*
 func (s *Server) validateNewGroup(ctx context.Context, accountID string) error {
 	groups, err := s.db.ListGroups(ctx)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.ListGroups", "err", err)
 		return status.Error(codes.Internal, "Failed to validate group creation")
 	}
 
@@ -124,6 +128,7 @@ func (s *Server) validateNewGroup(ctx context.Context, accountID string) error {
 func (s *Server) validateGroupOwnership(ctx context.Context, groupID, accountID string) error {
 	group, err := s.db.GetGroup(ctx, groupID)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.GetGroup", "err", err)
 		return status.Error(codes.Internal, "Failed to validate group ownership")
 	}
 	if group == nil {
@@ -151,6 +156,7 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 
 	group, err := s.db.GetGroup(ctx, req.GroupId)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.GetGroup", "err", err)
 		return nil, status.Errorf(codes.Internal, "Failed to get group: %v", err)
 	}
 	if group == nil {
@@ -162,6 +168,7 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 
 	// Delete from database
 	if err := s.db.DeleteGroup(ctx, group.Id); err != nil {
+		slog.ErrorContext(ctx, "s.db.DeleteGroup", "err", err)
 		return nil, status.Error(codes.Internal, "Failed to delete group")
 	}
 
@@ -178,6 +185,7 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 func (s *Server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb.ListGroupsResponse, error) {
 	groups, err := s.db.ListGroups(ctx)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.ListGroups", "err", err)
 		return nil, status.Error(codes.Internal, "Failed to list groups")
 	}
 	return &pb.ListGroupsResponse{
@@ -201,6 +209,7 @@ func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 
 	savedApp, err := s.db.SaveApplication(ctx, application, req.GroupId)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.SaveApplication", "err", err)
 		return nil, status.Error(codes.Internal, "Failed to create application")
 	}
 
@@ -214,6 +223,7 @@ func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 func (s *Server) validateApplication(ctx context.Context, groupID, accountID string) error {
 	group, err := s.db.GetGroup(ctx, groupID)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.GetGroup", "err", err)
 		return status.Error(codes.Internal, "Failed to validate application")
 	}
 	if group == nil {
@@ -225,6 +235,7 @@ func (s *Server) validateApplication(ctx context.Context, groupID, accountID str
 
 	applications, err := s.db.ListApplications(ctx, groupID)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.ListApplications", "err", err)
 		return status.Error(codes.Internal, "Failed to check existing applications")
 	}
 
@@ -244,6 +255,7 @@ func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 
 	application, err := s.db.GetApplication(ctx, req.ApplicationId)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.GetApplication", "err", err)
 		return nil, status.Errorf(codes.Internal, "Failed to get application: %v", err)
 	}
 	if application == nil {
@@ -255,6 +267,7 @@ func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 
 	// Delete from database
 	if err := s.db.DeleteApplication(ctx, req.ApplicationId); err != nil {
+		slog.ErrorContext(ctx, "s.db.DeleteApplication", "err", err)
 		return nil, status.Error(codes.Internal, "Failed to delete application")
 	}
 
@@ -275,6 +288,7 @@ func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 
 	group, err := s.db.GetGroup(ctx, req.GroupId)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.GetGroup", "err", err)
 		return nil, status.Error(codes.NotFound, "Group not found")
 	}
 
@@ -284,6 +298,7 @@ func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 
 	applications, err := s.db.ListApplications(ctx, req.GroupId)
 	if err != nil {
+		slog.ErrorContext(ctx, "s.db.ListApplications", "err", err)
 		return nil, status.Error(codes.Internal, "Failed to list applications")
 	}
 
@@ -300,6 +315,7 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 
 	group, err := s.db.GetGroup(stream.Context(), req.GroupId)
 	if err != nil {
+		slog.ErrorContext(stream.Context(), "s.db.GetGroup", "err", err)
 		return status.Error(codes.NotFound, "Group not found")
 	}
 

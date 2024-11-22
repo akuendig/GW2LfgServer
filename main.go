@@ -82,7 +82,8 @@ func loadConfig() (*Config, error) {
 		slog.Warn("MAX_CONN_COUNT environment variable not set, using default value 1000")
 	}
 
-	dbPath := "file::memory:?cache=shared"
+	// dbPath := "file::memory:?cache=shared"
+	dbPath := "./gw2lfg.db"
 	if dp := os.Getenv("DATABASE_PATH"); dp != "" {
 		dbPath = dp
 	} else {
@@ -146,12 +147,12 @@ func main() {
 	// You can implement your own rate-limiter for the interface.
 	limiter := ratelimit.NewRateLimiter(ratelimit.Config{
 		RequestsPerSecond: 1,
-		Burst:             1,
+		Burst:             10,
 		CleanupInterval:   time.Minute,
 	})
 
 	loggingOpts := []logging.Option{
-		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
+		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
 		// Add any other option (check functions starting with logging.With).
 	}
 	recoveryOpts := []recovery.Option{
