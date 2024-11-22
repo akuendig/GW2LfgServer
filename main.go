@@ -183,11 +183,12 @@ func main() {
 	limiter := &alwaysPassLimiter{}
 
 	loggingOpts := []logging.Option{
-		logging.WithLogOnEvents(logging.StartCall, logging.FinishCall),
+		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
 		// Add any other option (check functions starting with logging.With).
 	}
 	recoveryOpts := []recovery.Option{
 		recovery.WithRecoveryHandler(func(p interface{}) error {
+			slog.Error("panic recovered", "error", p)
 			return status.Errorf(codes.Internal, "internal server error")
 		}),
 	}

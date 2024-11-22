@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	pb "gw2lfgserver/pb"
+	"log/slog"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -59,6 +61,8 @@ func initializeTables(db *sql.DB) error {
 
 // GroupOperations contains all group-related database operations
 func (db *DB) SaveGroup(ctx context.Context, group *pb.Group) (*pb.Group, error) {
+	start := time.Now()
+	defer func() { slog.InfoContext(ctx, "db.SaveGroup", slog.Duration("elapsed", time.Since(start))) }()
 	query := `
         INSERT INTO groups (id, creator_id, title, kill_proof_id, kill_proof_minimum, created_at_sec)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -91,11 +95,15 @@ func (db *DB) SaveGroup(ctx context.Context, group *pb.Group) (*pb.Group, error)
 }
 
 func (db *DB) DeleteGroup(ctx context.Context, groupId string) error {
+	start := time.Now()
+	defer func() { slog.InfoContext(ctx, "db.DeleteGroup", slog.Duration("elapsed", time.Since(start))) }()
 	_, err := db.db.ExecContext(ctx, `DELETE FROM groups WHERE id = ?`, groupId)
 	return err
 }
 
 func (db *DB) GetGroup(ctx context.Context, id string) (*pb.Group, error) {
+	start := time.Now()
+	defer func() { slog.InfoContext(ctx, "db.GetGroup", slog.Duration("elapsed", time.Since(start))) }()
 	query := `
 		SELECT id, creator_id, title, kill_proof_id, kill_proof_minimum, created_at_sec 
 		FROM groups 
@@ -117,6 +125,8 @@ func (db *DB) GetGroup(ctx context.Context, id string) (*pb.Group, error) {
 }
 
 func (db *DB) ListGroups(ctx context.Context) ([]*pb.Group, error) {
+	start := time.Now()
+	defer func() { slog.InfoContext(ctx, "db.ListGroups", slog.Duration("elapsed", time.Since(start))) }()
 	query := `
 		SELECT id, creator_id, title, kill_proof_id, kill_proof_minimum, created_at_sec 
 		FROM groups 
@@ -148,6 +158,8 @@ func (db *DB) ListGroups(ctx context.Context) ([]*pb.Group, error) {
 
 // ApplicationOperations contains all application-related database operations
 func (db *DB) SaveApplication(ctx context.Context, app *pb.GroupApplication, groupID string) (*pb.GroupApplication, error) {
+	start := time.Now()
+	defer func() { slog.InfoContext(ctx, "db.SaveApplication", slog.Duration("elapsed", time.Since(start))) }()
 	query := `
         INSERT INTO applications (id, group_id, account_name)
         VALUES (?, ?, ?)
@@ -172,6 +184,8 @@ func (db *DB) SaveApplication(ctx context.Context, app *pb.GroupApplication, gro
 }
 
 func (db *DB) GetApplication(ctx context.Context, applicationId string) (*pb.GroupApplication, error) {
+	start := time.Now()
+	defer func() { slog.InfoContext(ctx, "db.GetApplication", slog.Duration("elapsed", time.Since(start))) }()
 	query := `SELECT id, account_name, group_id FROM applications WHERE id = ?`
 	var application pb.GroupApplication
 	err := db.db.QueryRowContext(ctx, query, applicationId).Scan(
@@ -186,11 +200,15 @@ func (db *DB) GetApplication(ctx context.Context, applicationId string) (*pb.Gro
 }
 
 func (db *DB) DeleteApplication(ctx context.Context, applicationId string) error {
+	start := time.Now()
+	defer func() { slog.InfoContext(ctx, "db.DeleteApplication", slog.Duration("elapsed", time.Since(start))) }()
 	_, err := db.db.ExecContext(ctx, `DELETE FROM applications WHERE id = ?`, applicationId)
 	return err
 }
 
 func (db *DB) ListApplications(ctx context.Context, groupID string) ([]*pb.GroupApplication, error) {
+	start := time.Now()
+	defer func() { slog.InfoContext(ctx, "db.ListApplications", slog.Duration("elapsed", time.Since(start))) }()
 	query := `SELECT id, account_name FROM applications WHERE group_id = ?`
 	rows, err := db.db.QueryContext(ctx, query, groupID)
 	if err != nil {
