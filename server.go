@@ -74,15 +74,16 @@ func (s *Server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*
 		CreatedAtSec:     time.Now().Unix(),
 	}
 
-	if err := s.db.SaveGroup(ctx, group); err != nil {
+	savedGroup, err := s.db.SaveGroup(ctx, group)
+	if err != nil {
 		return nil, status.Error(codes.Internal, "Failed to create group")
 	}
 
 	s.broadcastGroupUpdate(&pb.GroupsUpdate{
-		Update: &pb.GroupsUpdate_NewGroup{NewGroup: group},
+		Update: &pb.GroupsUpdate_NewGroup{NewGroup: savedGroup},
 	})
 
-	return &pb.CreateGroupResponse{Group: group}, nil
+	return &pb.CreateGroupResponse{Group: savedGroup}, nil
 }
 
 func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*pb.UpdateGroupResponse, error) {
@@ -93,15 +94,16 @@ func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*
 		return nil, err
 	}
 
-	if err := s.db.SaveGroup(ctx, group); err != nil {
+	savedGroup, err := s.db.SaveGroup(ctx, group)
+	if err != nil {
 		return nil, status.Error(codes.Internal, "Failed to update group")
 	}
 
 	s.broadcastGroupUpdate(&pb.GroupsUpdate{
-		Update: &pb.GroupsUpdate_UpdatedGroup{UpdatedGroup: group},
+		Update: &pb.GroupsUpdate_UpdatedGroup{UpdatedGroup: savedGroup},
 	})
 
-	return &pb.UpdateGroupResponse{Group: group}, nil
+	return &pb.UpdateGroupResponse{Group: savedGroup}, nil
 }
 
 func (s *Server) validateNewGroup(ctx context.Context, accountID string) error {
@@ -196,15 +198,16 @@ func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 		GroupId:     req.GroupId,
 	}
 
-	if err := s.db.SaveApplication(ctx, application, req.GroupId); err != nil {
+	savedApp, err := s.db.SaveApplication(ctx, application, req.GroupId)
+	if err != nil {
 		return nil, status.Error(codes.Internal, "Failed to create application")
 	}
 
 	s.broadcastApplicationUpdate(req.GroupId, &pb.GroupApplicationUpdate{
-		Update: &pb.GroupApplicationUpdate_NewApplication{NewApplication: application},
+		Update: &pb.GroupApplicationUpdate_NewApplication{NewApplication: savedApp},
 	})
 
-	return &pb.CreateGroupApplicationResponse{Application: application}, nil
+	return &pb.CreateGroupApplicationResponse{Application: savedApp}, nil
 }
 
 func (s *Server) validateApplication(ctx context.Context, groupID, accountID string) error {

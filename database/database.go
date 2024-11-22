@@ -58,24 +58,36 @@ func initializeTables(db *sql.DB) error {
 }
 
 // GroupOperations contains all group-related database operations
-func (db *DB) SaveGroup(ctx context.Context, group *pb.Group) error {
+func (db *DB) SaveGroup(ctx context.Context, group *pb.Group) (*pb.Group, error) {
 	query := `
-		INSERT INTO groups (id, creator_id, title, kill_proof_id, kill_proof_minimum, created_at_sec)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			title = excluded.title,
-			kill_proof_id = excluded.kill_proof_id,
-			kill_proof_minimum = excluded.kill_proof_minimum
-	`
-	_, err := db.db.ExecContext(ctx, query,
+        INSERT INTO groups (id, creator_id, title, kill_proof_id, kill_proof_minimum, created_at_sec)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            kill_proof_id = excluded.kill_proof_id,
+            kill_proof_minimum = excluded.kill_proof_minimum
+        RETURNING id, creator_id, title, kill_proof_id, kill_proof_minimum, created_at_sec
+    `
+	var savedGroup pb.Group
+	err := db.db.QueryRowContext(ctx, query,
 		group.Id,
 		group.CreatorId,
 		group.Title,
 		group.KillProofId,
 		group.KillProofMinimum,
 		group.CreatedAtSec,
+	).Scan(
+		&savedGroup.Id,
+		&savedGroup.CreatorId,
+		&savedGroup.Title,
+		&savedGroup.KillProofId,
+		&savedGroup.KillProofMinimum,
+		&savedGroup.CreatedAtSec,
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return &savedGroup, nil
 }
 
 func (db *DB) DeleteGroup(ctx context.Context, groupId string) error {
@@ -135,14 +147,28 @@ func (db *DB) ListGroups(ctx context.Context) ([]*pb.Group, error) {
 }
 
 // ApplicationOperations contains all application-related database operations
-func (db *DB) SaveApplication(ctx context.Context, app *pb.GroupApplication, groupID string) error {
+func (db *DB) SaveApplication(ctx context.Context, app *pb.GroupApplication, groupID string) (*pb.GroupApplication, error) {
 	query := `
-		INSERT INTO applications (id, group_id, account_name) 
-		VALUES (?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET account_name = excluded.account_name
-	`
-	_, err := db.db.ExecContext(ctx, query, app.Id, groupID, app.AccountName)
-	return err
+        INSERT INTO applications (id, group_id, account_name)
+        VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            account_name = excluded.account_name
+        RETURNING id, group_id, account_name
+    `
+	var savedApp pb.GroupApplication
+	err := db.db.QueryRowContext(ctx, query,
+		app.Id,
+		groupID,
+		app.AccountName,
+	).Scan(
+		&savedApp.Id,
+		&savedApp.GroupId,
+		&savedApp.AccountName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &savedApp, nil
 }
 
 func (db *DB) GetApplication(ctx context.Context, applicationId string) (*pb.GroupApplication, error) {
