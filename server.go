@@ -4,6 +4,7 @@ import (
 	"context"
 	"gw2lfgserver/clientinfo"
 	"gw2lfgserver/database"
+	"gw2lfgserver/kpme"
 	pb "gw2lfgserver/pb"
 	"gw2lfgserver/syncmap"
 	"log/slog"
@@ -17,13 +18,15 @@ import (
 type Server struct {
 	pb.UnimplementedLfgServiceServer
 	db                      *database.DB
+	kpClient                *kpme.Client
 	groupsSubscribers       *syncmap.Map[string, chan *pb.GroupsUpdate]
 	applicationsSubscribers *syncmap.Map[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]]
 }
 
-func NewServer(db *database.DB) *Server {
+func NewServer(db *database.DB, kpClient *kpme.Client) *Server {
 	return &Server{
 		db:                      db,
+		kpClient:                kpClient,
 		groupsSubscribers:       syncmap.New[string, chan *pb.GroupsUpdate](),
 		applicationsSubscribers: syncmap.New[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]](),
 	}
@@ -213,6 +216,13 @@ func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 		return nil, status.Error(codes.Internal, "Failed to create application")
 	}
 
+	kp, err := s.kpClient.GetKillProof(savedApp.AccountName)
+	if err != nil {
+		slog.ErrorContext(ctx, "s.kpClient.GetKillProof", "err", err)
+	} else if kp != nil {
+		savedApp.KillProof = kpme.KillProofReponseToProto(kp)
+	}
+
 	s.broadcastApplicationUpdate(req.GroupId, &pb.GroupApplicationUpdate{
 		Update: &pb.GroupApplicationUpdate_NewApplication{NewApplication: savedApp},
 	})
@@ -300,6 +310,18 @@ func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 	if err != nil {
 		slog.ErrorContext(ctx, "s.db.ListApplications", "err", err)
 		return nil, status.Error(codes.Internal, "Failed to list applications")
+	}
+
+	for _, app := range applications {
+		kp, err := s.kpClient.GetKillProof(app.AccountName)
+		if err != nil {
+			slog.ErrorContext(ctx, "s.kpClient.GetKillProof", "err", err)
+			continue
+		}
+		if kp == nil {
+			continue
+		}
+		app.KillProof = kpme.KillProofReponseToProto(kp)
 	}
 
 	return &pb.ListGroupApplicationsResponse{

@@ -18,6 +18,7 @@ import (
 	"gw2lfgserver/authenticator"
 	"gw2lfgserver/database"
 	"gw2lfgserver/keyresolver"
+	"gw2lfgserver/kpme"
 	pb "gw2lfgserver/pb"
 	"gw2lfgserver/ratelimit"
 
@@ -143,6 +144,7 @@ func main() {
 
 	keyResolver := keyresolver.New()
 	authenticator := authenticator.New(keyResolver)
+	kpClient := kpme.NewClient()
 	// Create unary/stream rateLimiters, based on token bucket here.
 	// You can implement your own rate-limiter for the interface.
 	limiter := ratelimit.NewRateLimiter(ratelimit.Config{
@@ -184,7 +186,7 @@ func main() {
 	)
 
 	// Create and register the LFG service
-	server := NewServer(db)
+	server := NewServer(db, kpClient)
 	pb.RegisterLfgServiceServer(grpcServer, server)
 
 	// Setup health check required by Render
