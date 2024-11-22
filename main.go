@@ -11,12 +11,15 @@ import (
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
-	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/ratelimit"
+	grpc_ratelimit "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/ratelimit"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 
+	"gw2lfgserver/authenticator"
 	"gw2lfgserver/database"
+	"gw2lfgserver/keyresolver"
 	pb "gw2lfgserver/pb"
+	"gw2lfgserver/ratelimit"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -114,26 +117,6 @@ func InterceptorLogger(l *slog.Logger) logging.Logger {
 	})
 }
 
-// alwaysPassLimiter is an example limiter which implements Limiter interface.
-// It does not limit any request because Limit function always returns false.
-type alwaysPassLimiter struct{}
-
-func (*alwaysPassLimiter) Limit(_ context.Context) error {
-	// Example rate limiter could be implemented using e.g. github.com/juju/ratelimit
-	//	// Take one token per request. This call doesn't block.
-	//	tokenRes := l.tokenBucket.TakeAvailable(1)
-	//
-	//	// When rate limit reached, return specific error for the clients.
-	//	if tokenRes == 0 {
-	//		return fmt.Errorf("APP-XXX: reached Rate-Limiting %d", l.tokenBucket.Available())
-	//	}
-	//
-	//	// Rate limit isn't reached.
-	//	return nil
-	// }
-	return nil
-}
-
 func main() {
 	// Load configuration
 	config, err := loadConfig()
@@ -157,30 +140,15 @@ func main() {
 		Timeout:           config.KeepAliveTimeout,
 	}
 
-	r := keyResolver{}
-	authFunc := func(ctx context.Context) (context.Context, error) {
-		token, err := grpc_auth.AuthFromMD(ctx, "bearer")
-		if err != nil {
-			return nil, err
-		}
-
-		clientId, err := r.Resolve(ctx, token)
-		if err != nil {
-			return nil, err
-		}
-
-		if clientId == "" {
-			return nil, status.Errorf(codes.Unauthenticated, "invalid auth token")
-		}
-
-		return withClientInfo(ctx, &clientInfo{
-			AccountID: clientId,
-			Token:     token,
-		}), nil
-	}
+	keyResolver := keyresolver.New()
+	authenticator := authenticator.New(keyResolver)
 	// Create unary/stream rateLimiters, based on token bucket here.
 	// You can implement your own rate-limiter for the interface.
-	limiter := &alwaysPassLimiter{}
+	limiter := ratelimit.NewRateLimiter(ratelimit.Config{
+		RequestsPerSecond: 1,
+		Burst:             1,
+		CleanupInterval:   time.Minute,
+	})
 
 	loggingOpts := []logging.Option{
 		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
@@ -202,14 +170,14 @@ func main() {
 		grpc.MaxConcurrentStreams(uint32(config.MaxConcurrentConns)),
 		grpc.ChainUnaryInterceptor(
 			logging.UnaryServerInterceptor(InterceptorLogger(slog.Default()), loggingOpts...),
-			grpc_auth.UnaryServerInterceptor(authFunc),
-			ratelimit.UnaryServerInterceptor(limiter),
+			grpc_auth.UnaryServerInterceptor(authenticator.Authenticate),
+			grpc_ratelimit.UnaryServerInterceptor(limiter),
 			recovery.UnaryServerInterceptor(recoveryOpts...),
 		),
 		grpc.ChainStreamInterceptor(
 			logging.StreamServerInterceptor(InterceptorLogger(slog.Default()), loggingOpts...),
-			grpc_auth.StreamServerInterceptor(authFunc),
-			ratelimit.StreamServerInterceptor(limiter),
+			grpc_auth.StreamServerInterceptor(authenticator.Authenticate),
+			grpc_ratelimit.StreamServerInterceptor(limiter),
 			recovery.StreamServerInterceptor(recoveryOpts...),
 		),
 	)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"gw2lfgserver/clientinfo"
 	"gw2lfgserver/database"
 	pb "gw2lfgserver/pb"
 	"gw2lfgserver/syncmap"
@@ -28,7 +29,7 @@ func NewServer(db *database.DB) *Server {
 }
 
 func (s *Server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgService_SubscribeGroupsServer) error {
-	clientInfo := clientInfoFromContext(stream.Context())
+	clientInfo := clientinfo.FromContext(stream.Context())
 	if clientInfo == nil {
 		return status.Error(codes.PermissionDenied, "Not authenticated")
 	}
@@ -134,8 +135,8 @@ func (s *Server) validateGroupOwnership(ctx context.Context, groupID, accountID 
 	return nil
 }
 
-func mustGetClient(ctx context.Context) *clientInfo {
-	client := clientInfoFromContext(ctx)
+func mustGetClient(ctx context.Context) *clientinfo.ClientInfo {
+	client := clientinfo.FromContext(ctx)
 	if client == nil {
 		panic("authentication middleware failed to inject client info")
 	}
@@ -143,7 +144,7 @@ func mustGetClient(ctx context.Context) *clientInfo {
 }
 
 func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*pb.DeleteGroupResponse, error) {
-	clientInfo := clientInfoFromContext(ctx)
+	clientInfo := clientinfo.FromContext(ctx)
 	if clientInfo == nil {
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
@@ -236,7 +237,7 @@ func (s *Server) validateApplication(ctx context.Context, groupID, accountID str
 }
 
 func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroupApplicationRequest) (*pb.DeleteGroupApplicationResponse, error) {
-	clientInfo := clientInfoFromContext(ctx)
+	clientInfo := clientinfo.FromContext(ctx)
 	if clientInfo == nil {
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
@@ -267,7 +268,7 @@ func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 }
 
 func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApplicationsRequest) (*pb.ListGroupApplicationsResponse, error) {
-	clientInfo := clientInfoFromContext(ctx)
+	clientInfo := clientinfo.FromContext(ctx)
 	if clientInfo == nil {
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
@@ -292,7 +293,7 @@ func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 }
 
 func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRequest, stream pb.LfgService_SubscribeGroupApplicationsServer) error {
-	clientInfo := clientInfoFromContext(stream.Context())
+	clientInfo := clientinfo.FromContext(stream.Context())
 	if clientInfo == nil {
 		return status.Error(codes.PermissionDenied, "Not authenticated")
 	}
