@@ -66,17 +66,19 @@ func (s *Server) SubscribeGroups(req *pb.SubscribeGroupsRequest, stream pb.LfgSe
 func (s *Server) CreateGroup(ctx context.Context, req *pb.CreateGroupRequest) (*pb.CreateGroupResponse, error) {
 	client := mustGetClient(ctx)
 
-	if err := s.validateNewGroup(ctx, client.AccountID); err != nil {
+	if err := s.validateNewGroup(ctx, client.AccountName); err != nil {
 		return nil, err
 	}
 
+	now := time.Now()
 	group := &pb.Group{
 		Id:               uuid.New().String(),
-		CreatorId:        client.AccountID,
+		CreatorId:        client.AccountName,
 		Title:            req.Title,
 		KillProofId:      req.KillProofId,
 		KillProofMinimum: req.KillProofMinimum,
-		CreatedAtSec:     time.Now().Unix(),
+		CreatedAtSec:     now.Unix(),
+		UpdatedAtSec:     now.Unix(),
 	}
 
 	savedGroup, err := s.db.SaveGroup(ctx, group)
@@ -96,10 +98,12 @@ func (s *Server) UpdateGroup(ctx context.Context, req *pb.UpdateGroupRequest) (*
 	client := mustGetClient(ctx)
 	group := req.GetGroup()
 
-	if err := s.validateGroupOwnership(ctx, group.Id, client.AccountID); err != nil {
+	if err := s.validateGroupOwnership(ctx, group.Id, client.AccountName); err != nil {
 		return nil, err
 	}
 
+	now := time.Now()
+	group.UpdatedAtSec = now.Unix()
 	savedGroup, err := s.db.SaveGroup(ctx, group)
 	if err != nil {
 		slog.ErrorContext(ctx, "s.db.SaveGroup", "err", err)
@@ -165,7 +169,7 @@ func (s *Server) DeleteGroup(ctx context.Context, req *pb.DeleteGroupRequest) (*
 	if group == nil {
 		return nil, nil
 	}
-	if clientInfo.AccountID != group.CreatorId {
+	if clientInfo.AccountName != group.CreatorId {
 		return nil, status.Error(codes.PermissionDenied, "Not group creator")
 	}
 
@@ -200,14 +204,17 @@ func (s *Server) ListGroups(ctx context.Context, req *pb.ListGroupsRequest) (*pb
 func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroupApplicationRequest) (*pb.CreateGroupApplicationResponse, error) {
 	client := mustGetClient(ctx)
 
-	if err := s.validateApplication(ctx, req.GroupId, client.AccountID); err != nil {
+	if err := s.validateApplication(ctx, req.GroupId, client.AccountName); err != nil {
 		return nil, err
 	}
 
+	now := time.Now()
 	application := &pb.GroupApplication{
-		Id:          uuid.New().String(),
-		AccountName: client.AccountID,
-		GroupId:     req.GroupId,
+		Id:           uuid.New().String(),
+		AccountName:  client.AccountName,
+		GroupId:      req.GroupId,
+		CreatedAtSec: now.Unix(),
+		UpdatedAtSec: now.Unix(),
 	}
 
 	savedApp, err := s.db.SaveApplication(ctx, application, req.GroupId)
@@ -243,7 +250,7 @@ func (s *Server) validateApplication(ctx context.Context, groupID, accountID str
 		return status.Error(codes.PermissionDenied, "Cannot apply to own group")
 	}
 
-	applications, err := s.db.ListApplications(ctx, groupID)
+	applications, err := s.db.ListApplicationsForGroup(ctx, groupID)
 	if err != nil {
 		slog.ErrorContext(ctx, "s.db.ListApplications", "err", err)
 		return status.Error(codes.Internal, "Failed to check existing applications")
@@ -271,7 +278,7 @@ func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 	if application == nil {
 		return nil, status.Error(codes.NotFound, "Application not found")
 	}
-	if clientInfo.AccountID != application.AccountName {
+	if clientInfo.AccountName != application.AccountName {
 		return nil, status.Error(codes.PermissionDenied, "Not application owner")
 	}
 
@@ -296,20 +303,40 @@ func (s *Server) ListGroupApplications(ctx context.Context, req *pb.ListGroupApp
 		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
 	}
 
-	group, err := s.db.GetGroup(ctx, req.GroupId)
-	if err != nil {
-		slog.ErrorContext(ctx, "s.db.GetGroup", "err", err)
-		return nil, status.Error(codes.NotFound, "Group not found")
-	}
+	var applications []*pb.GroupApplication
+	if req.GetAccountName() != "" {
+		if req.GetAccountName() != clientInfo.AccountName {
+			return nil, status.Error(codes.PermissionDenied, "Account ID mismatch")
+		}
 
-	if clientInfo.AccountID != group.CreatorId {
-		return nil, status.Error(codes.PermissionDenied, "Not group creator")
-	}
+		apps, err := s.db.ListApplicationsForAccount(ctx, req.GetAccountName())
+		if err != nil {
+			slog.ErrorContext(ctx, "s.db.ListApplications", "err", err)
+			return nil, status.Error(codes.Internal, "Failed to list applications")
+		}
+		applications = apps
+	} else if req.GetGroupId() != "" {
+		group, err := s.db.GetGroup(ctx, req.GetGroupId())
+		if err != nil {
+			slog.ErrorContext(ctx, "s.db.GetGroup", "err", err)
+			return nil, status.Error(codes.NotFound, "Group not found")
+		}
+		if group == nil {
+			return nil, status.Error(codes.NotFound, "Group not found")
+		}
 
-	applications, err := s.db.ListApplications(ctx, req.GroupId)
-	if err != nil {
-		slog.ErrorContext(ctx, "s.db.ListApplications", "err", err)
-		return nil, status.Error(codes.Internal, "Failed to list applications")
+		if clientInfo.AccountName != group.CreatorId {
+			return nil, status.Error(codes.PermissionDenied, "Not group creator")
+		}
+
+		apps, err := s.db.ListApplicationsForGroup(ctx, req.GetGroupId())
+		if err != nil {
+			slog.ErrorContext(ctx, "s.db.ListApplications", "err", err)
+			return nil, status.Error(codes.Internal, "Failed to list applications")
+		}
+		applications = apps
+	} else {
+		return nil, status.Error(codes.InvalidArgument, "Either account name or group ID must be provided")
 	}
 
 	for _, app := range applications {
@@ -341,7 +368,7 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 		return status.Error(codes.NotFound, "Group not found")
 	}
 
-	if clientInfo.AccountID != group.CreatorId {
+	if clientInfo.AccountName != group.CreatorId {
 		return status.Error(codes.PermissionDenied, "Not group creator")
 	}
 
@@ -373,6 +400,75 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 			}
 		case <-stream.Context().Done():
 			return nil
+		}
+	}
+}
+
+func (s *Server) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
+	clientInfo := clientinfo.FromContext(ctx)
+	if clientInfo == nil {
+		return nil, status.Error(codes.PermissionDenied, "Not authenticated")
+	}
+
+	result, err := s.db.TouchGroupsAndApplications(ctx, clientInfo.AccountName)
+	if err != nil {
+		slog.ErrorContext(ctx, "s.db.TouchGroupsAndApplications", "err", err)
+		return nil, status.Error(codes.Internal, "Failed to update last seen time")
+	}
+
+	// Broadcast updates for touched groups
+	for _, group := range result.Groups {
+		s.broadcastGroupUpdate(&pb.GroupsUpdate{
+			Update: &pb.GroupsUpdate_UpdatedGroup{
+				UpdatedGroup: group,
+			},
+		})
+	}
+
+	// Broadcast updates for touched applications
+	for _, app := range result.Applications {
+		s.broadcastApplicationUpdate(app.GroupId, &pb.GroupApplicationUpdate{
+			Update: &pb.GroupApplicationUpdate_UpdatedApplication{
+				UpdatedApplication: app,
+			},
+		})
+	}
+
+	return &pb.HeartbeatResponse{}, nil
+}
+
+func (s *Server) CleanUpExpiredDatabaseEntries(ctx context.Context, dbEntryTTL time.Duration, cleanupInterval time.Duration) {
+	t := time.NewTicker(cleanupInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			// Delete applications before groups to avoid the foreign key constraint
+			applications, err := s.db.DeleteApplicationsUpdatedBefore(ctx, time.Now().Add(-dbEntryTTL))
+			if err != nil {
+				slog.ErrorContext(ctx, "s.db.DeleteApplicationsUpdatedBefore", "err", err)
+			}
+			for _, app := range applications {
+				s.broadcastApplicationUpdate(app.GroupId, &pb.GroupApplicationUpdate{
+					Update: &pb.GroupApplicationUpdate_RemovedApplicationId{
+						RemovedApplicationId: app.Id,
+					},
+				})
+			}
+
+			groups, err := s.db.DeleteGroupsUpdatedBefore(ctx, time.Now().Add(-dbEntryTTL))
+			if err != nil {
+				slog.ErrorContext(ctx, "s.db.DeleteGroupsUpdatedBefore", "err", err)
+			}
+			for _, group := range groups {
+				s.broadcastGroupUpdate(&pb.GroupsUpdate{
+					Update: &pb.GroupsUpdate_RemovedGroupId{
+						RemovedGroupId: group.Id,
+					},
+				})
+			}
 		}
 	}
 }

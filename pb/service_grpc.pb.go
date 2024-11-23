@@ -29,6 +29,7 @@ const (
 	LfgService_ListGroupApplications_FullMethodName      = "/gw2lfg.LfgService/ListGroupApplications"
 	LfgService_DeleteGroupApplication_FullMethodName     = "/gw2lfg.LfgService/DeleteGroupApplication"
 	LfgService_SubscribeGroupApplications_FullMethodName = "/gw2lfg.LfgService/SubscribeGroupApplications"
+	LfgService_Heartbeat_FullMethodName                  = "/gw2lfg.LfgService/Heartbeat"
 )
 
 // LfgServiceClient is the client API for LfgService service.
@@ -45,6 +46,7 @@ type LfgServiceClient interface {
 	ListGroupApplications(ctx context.Context, in *ListGroupApplicationsRequest, opts ...grpc.CallOption) (*ListGroupApplicationsResponse, error)
 	DeleteGroupApplication(ctx context.Context, in *DeleteGroupApplicationRequest, opts ...grpc.CallOption) (*DeleteGroupApplicationResponse, error)
 	SubscribeGroupApplications(ctx context.Context, in *SubscribeGroupApplicationsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GroupApplicationUpdate], error)
+	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 }
 
 type lfgServiceClient struct {
@@ -173,6 +175,16 @@ func (c *lfgServiceClient) SubscribeGroupApplications(ctx context.Context, in *S
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type LfgService_SubscribeGroupApplicationsClient = grpc.ServerStreamingClient[GroupApplicationUpdate]
 
+func (c *lfgServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HeartbeatResponse)
+	err := c.cc.Invoke(ctx, LfgService_Heartbeat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LfgServiceServer is the server API for LfgService service.
 // All implementations must embed UnimplementedLfgServiceServer
 // for forward compatibility.
@@ -187,6 +199,7 @@ type LfgServiceServer interface {
 	ListGroupApplications(context.Context, *ListGroupApplicationsRequest) (*ListGroupApplicationsResponse, error)
 	DeleteGroupApplication(context.Context, *DeleteGroupApplicationRequest) (*DeleteGroupApplicationResponse, error)
 	SubscribeGroupApplications(*SubscribeGroupApplicationsRequest, grpc.ServerStreamingServer[GroupApplicationUpdate]) error
+	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	mustEmbedUnimplementedLfgServiceServer()
 }
 
@@ -226,6 +239,9 @@ func (UnimplementedLfgServiceServer) DeleteGroupApplication(context.Context, *De
 }
 func (UnimplementedLfgServiceServer) SubscribeGroupApplications(*SubscribeGroupApplicationsRequest, grpc.ServerStreamingServer[GroupApplicationUpdate]) error {
 	return status.Errorf(codes.Unimplemented, "method SubscribeGroupApplications not implemented")
+}
+func (UnimplementedLfgServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
 }
 func (UnimplementedLfgServiceServer) mustEmbedUnimplementedLfgServiceServer() {}
 func (UnimplementedLfgServiceServer) testEmbeddedByValue()                    {}
@@ -414,6 +430,24 @@ func _LfgService_SubscribeGroupApplications_Handler(srv interface{}, stream grpc
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type LfgService_SubscribeGroupApplicationsServer = grpc.ServerStreamingServer[GroupApplicationUpdate]
 
+func _LfgService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HeartbeatRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LfgServiceServer).Heartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LfgService_Heartbeat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LfgServiceServer).Heartbeat(ctx, req.(*HeartbeatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LfgService_ServiceDesc is the grpc.ServiceDesc for LfgService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -452,6 +486,10 @@ var LfgService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteGroupApplication",
 			Handler:    _LfgService_DeleteGroupApplication_Handler,
+		},
+		{
+			MethodName: "Heartbeat",
+			Handler:    _LfgService_Heartbeat_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

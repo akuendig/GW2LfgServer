@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
@@ -32,16 +34,18 @@ import (
 )
 
 type Config struct {
-	Host               string
-	Port               int
-	MetricsPort        int
-	MaxConnAge         time.Duration
-	KeepAliveTime      time.Duration
-	KeepAliveTimeout   time.Duration
-	MaxRecvMsgSize     int
-	MaxSendMsgSize     int
-	MaxConcurrentConns int
-	DatabasePath       string
+	Host                string
+	Port                int
+	MetricsPort         int
+	MaxConnAge          time.Duration
+	KeepAliveTime       time.Duration
+	KeepAliveTimeout    time.Duration
+	MaxRecvMsgSize      int
+	MaxSendMsgSize      int
+	MaxConcurrentConns  int
+	DatabasePath        string
+	DatabaseEntryTTL    time.Duration
+	DatabaseCleanupFreq time.Duration
 }
 
 func loadConfig() (*Config, error) {
@@ -91,17 +95,41 @@ func loadConfig() (*Config, error) {
 		slog.Warn("DATABASE_PATH environment variable not set, using in-memory database")
 	}
 
+	dbEntryTTL := 2 * time.Hour
+	if ttl := os.Getenv("DATABASE_ENTRY_TTL"); ttl != "" {
+		ttlDuration, err := time.ParseDuration(ttl)
+		if err != nil {
+			return nil, fmt.Errorf("invalid DATABASE_ENTRY_TTL value: %w", err)
+		}
+		dbEntryTTL = ttlDuration
+	} else {
+		slog.Warn("DATABASE_ENTRY_TTL environment variable not set, using default value 1h")
+	}
+
+	dbCleanupFreq := 5 * time.Minute
+	if cf := os.Getenv("DATABASE_CLEANUP_FREQ"); cf != "" {
+		cfDuration, err := time.ParseDuration(cf)
+		if err != nil {
+			return nil, fmt.Errorf("invalid DATABASE_CLEANUP_FREQ value: %w", err)
+		}
+		dbCleanupFreq = cfDuration
+	} else {
+		slog.Warn("DATABASE_CLEANUP_FREQ environment variable not set, using default value 5m")
+	}
+
 	return &Config{
-		Host:               host,
-		Port:               port,
-		MetricsPort:        metricsPort,
-		MaxConnAge:         time.Hour,
-		KeepAliveTime:      time.Hour,
-		KeepAliveTimeout:   time.Second * 20,
-		MaxRecvMsgSize:     4 * 1024 * 1024, // 4MB
-		MaxSendMsgSize:     4 * 1024 * 1024, // 4MB
-		MaxConcurrentConns: maxConns,
-		DatabasePath:       dbPath,
+		Host:                host,
+		Port:                port,
+		MetricsPort:         metricsPort,
+		MaxConnAge:          time.Hour,
+		KeepAliveTime:       time.Hour,
+		KeepAliveTimeout:    time.Second * 20,
+		MaxRecvMsgSize:      4 * 1024 * 1024, // 4MB
+		MaxSendMsgSize:      4 * 1024 * 1024, // 4MB
+		MaxConcurrentConns:  maxConns,
+		DatabasePath:        dbPath,
+		DatabaseEntryTTL:    dbEntryTTL,
+		DatabaseCleanupFreq: dbCleanupFreq,
 	}, nil
 }
 
@@ -200,9 +228,16 @@ func main() {
 	// Start metrics server if enabled
 	if config.MetricsPort > 0 {
 		go func() {
-			if err := startMetricsServer(config.MetricsPort); err != nil {
-				slog.Warn("Failed to start metrics server", "error", err)
-			}
+		}()
+	}
+
+	// Setup signal handling
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	if config.DatabaseEntryTTL > 0 && config.DatabaseCleanupFreq > 0 {
+		go func() {
+			server.CleanUpExpiredDatabaseEntries(ctx, config.DatabaseEntryTTL, config.DatabaseCleanupFreq)
 		}()
 	}
 
@@ -220,16 +255,51 @@ func main() {
 		Handler: wrappedGrpc,
 	}
 
-	slog.Info(
-		"Starting server",
-		"address", httpServer.Addr,
-		"resources", grpcweb.ListGRPCResources(grpcServer))
-	if err := httpServer.ListenAndServe(); err != nil {
-		slog.Error("failed to serve: %v", "error", err)
-	}
-}
+	// Channel to receive shutdown signal
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
-func startMetricsServer(port int) error {
-	// Implement metrics server (optional)
-	return nil
+	// Channel to receive error from HTTP server
+	serverError := make(chan error, 1)
+
+	// Start HTTP server in a goroutine
+	go func() {
+		slog.Info(
+			"Starting server",
+			"address", httpServer.Addr,
+			"resources", grpcweb.ListGRPCResources(grpcServer))
+		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
+			serverError <- err
+		}
+	}()
+
+	// Wait for shutdown signal or server error
+	select {
+	case <-shutdown:
+		slog.Info("Shutdown signal received")
+	case err := <-serverError:
+		slog.Error("Server error", "error", err)
+	}
+
+	// Create shutdown context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Initiate graceful shutdown
+	slog.Info("Initiating graceful shutdown")
+
+	// Shutdown HTTP server first
+	if err := httpServer.Shutdown(ctx); err != nil {
+		slog.Error("HTTP server shutdown error", "error", err)
+	}
+
+	// Stop gRPC server gracefully
+	grpcServer.GracefulStop()
+
+	// Close database connection
+	if err := db.Close(); err != nil {
+		slog.Error("Database closure error", "error", err)
+	}
+
+	slog.Info("Server shutdown complete")
 }

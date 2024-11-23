@@ -4,8 +4,8 @@ import "context"
 
 type clientInfoContextKey struct{}
 type ClientInfo struct {
-	AccountID string
-	Token     string
+	AccountName string
+	Token       string
 }
 
 func ToContext(ctx context.Context, info *ClientInfo) context.Context {
@@ -14,7 +14,7 @@ func ToContext(ctx context.Context, info *ClientInfo) context.Context {
 
 func FromContext(ctx context.Context) *ClientInfo {
 	info, ok := ctx.Value(clientInfoContextKey{}).(*ClientInfo)
-	if ok && info != nil && info.AccountID != "" && info.Token != "" {
+	if ok && info != nil && info.AccountName != "" && info.Token != "" {
 		return info
 	} else {
 		return nil

@@ -34,7 +34,7 @@ func (a *Authenticator) Authenticate(ctx context.Context) (context.Context, erro
 	}
 
 	return clientinfo.ToContext(ctx, &clientinfo.ClientInfo{
-		AccountID: clientId,
-		Token:     token,
+		AccountName: clientId,
+		Token:       token,
 	}), nil
 }

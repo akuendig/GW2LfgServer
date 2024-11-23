@@ -51,9 +51,9 @@ func (rl *RateLimiter) Limit(ctx context.Context) error {
 		return status.Errorf(codes.InvalidArgument, "missing client ID")
 	}
 
-	limiter := rl.getLimiter(clientInfo.AccountID)
+	limiter := rl.getLimiter(clientInfo.AccountName)
 	if !limiter.Allow() {
-		return status.Errorf(codes.ResourceExhausted, "rate limit exceeded for client %s", clientInfo.AccountID)
+		return status.Errorf(codes.ResourceExhausted, "rate limit exceeded for client %s", clientInfo.AccountName)
 	}
 
 	return nil
