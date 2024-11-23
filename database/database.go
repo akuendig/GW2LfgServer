@@ -208,7 +208,7 @@ func (db *DB) SaveApplication(ctx context.Context, app *pb.GroupApplication, gro
         INSERT INTO applications (id, group_id, account_name, created_at_sec, updated_at_sec)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-            account_name = excluded.account_name
+            account_name = excluded.account_name,
 			updated_at_sec = excluded.updated_at_sec
         RETURNING id, group_id, account_name, created_at_sec, updated_at_sec
     `
@@ -217,6 +217,8 @@ func (db *DB) SaveApplication(ctx context.Context, app *pb.GroupApplication, gro
 		app.Id,
 		groupID,
 		app.AccountName,
+		app.CreatedAtSec,
+		app.UpdatedAtSec,
 	).Scan(
 		&savedApp.Id,
 		&savedApp.GroupId,
