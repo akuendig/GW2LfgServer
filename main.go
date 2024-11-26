@@ -177,7 +177,7 @@ func main() {
 	// You can implement your own rate-limiter for the interface.
 	limiter := ratelimit.NewRateLimiter(ratelimit.Config{
 		RequestsPerSecond: 1,
-		Burst:             10,
+		Burst:             20,
 		CleanupInterval:   time.Minute,
 	})
 

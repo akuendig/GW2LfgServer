@@ -17,18 +17,20 @@ import (
 
 type Server struct {
 	pb.UnimplementedLfgServiceServer
-	db                      *database.DB
-	kpClient                *kpme.Client
-	groupsSubscribers       *syncmap.Map[string, chan *pb.GroupsUpdate]
-	applicationsSubscribers *syncmap.Map[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]]
+	db                        *database.DB
+	kpClient                  *kpme.Client
+	groupsSubscribers         *syncmap.Map[string, chan *pb.GroupsUpdate]
+	applicationsSubscribers   *syncmap.Map[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]]
+	myApplicationsSubscribers *syncmap.Map[string, chan *pb.GroupApplicationUpdate]
 }
 
 func NewServer(db *database.DB, kpClient *kpme.Client) *Server {
 	return &Server{
-		db:                      db,
-		kpClient:                kpClient,
-		groupsSubscribers:       syncmap.New[string, chan *pb.GroupsUpdate](),
-		applicationsSubscribers: syncmap.New[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]](),
+		db:                        db,
+		kpClient:                  kpClient,
+		groupsSubscribers:         syncmap.New[string, chan *pb.GroupsUpdate](),
+		applicationsSubscribers:   syncmap.New[string, *syncmap.Map[string, chan *pb.GroupApplicationUpdate]](),
+		myApplicationsSubscribers: syncmap.New[string, chan *pb.GroupApplicationUpdate](),
 	}
 }
 
@@ -230,7 +232,7 @@ func (s *Server) CreateGroupApplication(ctx context.Context, req *pb.CreateGroup
 		savedApp.KillProof = kpme.KillProofReponseToProto(kp)
 	}
 
-	s.broadcastApplicationUpdate(req.GroupId, &pb.GroupApplicationUpdate{
+	s.broadcastApplicationUpdate(req.GroupId, savedApp.AccountName, &pb.GroupApplicationUpdate{
 		Update: &pb.GroupApplicationUpdate_NewApplication{NewApplication: savedApp},
 	})
 
@@ -288,7 +290,7 @@ func (s *Server) DeleteGroupApplication(ctx context.Context, req *pb.DeleteGroup
 		return nil, status.Error(codes.Internal, "Failed to delete application")
 	}
 
-	s.broadcastApplicationUpdate(application.GroupId, &pb.GroupApplicationUpdate{ // Update this line
+	s.broadcastApplicationUpdate(application.GroupId, application.AccountName, &pb.GroupApplicationUpdate{ // Update this line
 		Update: &pb.GroupApplicationUpdate_RemovedApplicationId{
 			RemovedApplicationId: application.Id,
 		},
@@ -382,6 +384,7 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 			subscribers.Set(clientInfo.Token, applications)
 			return subscribers, true
 		})
+	s.myApplicationsSubscribers.Set(clientInfo.AccountName, applications)
 
 	// TODO: What if the group gets deleted?
 	defer func() {
@@ -389,6 +392,7 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 		if ok {
 			subs.Delete(clientInfo.Token)
 		}
+		s.myApplicationsSubscribers.Delete(clientInfo.Token)
 		close(applications)
 	}()
 
@@ -427,7 +431,7 @@ func (s *Server) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.H
 
 	// Broadcast updates for touched applications
 	for _, app := range result.Applications {
-		s.broadcastApplicationUpdate(app.GroupId, &pb.GroupApplicationUpdate{
+		s.broadcastApplicationUpdate(app.GroupId, app.AccountName, &pb.GroupApplicationUpdate{
 			Update: &pb.GroupApplicationUpdate_UpdatedApplication{
 				UpdatedApplication: app,
 			},
@@ -451,7 +455,7 @@ func (s *Server) CleanUpExpiredDatabaseEntries(ctx context.Context, dbEntryTTL t
 				slog.ErrorContext(ctx, "s.db.DeleteApplicationsUpdatedBefore", "err", err)
 			}
 			for _, app := range applications {
-				s.broadcastApplicationUpdate(app.GroupId, &pb.GroupApplicationUpdate{
+				s.broadcastApplicationUpdate(app.GroupId, app.AccountName, &pb.GroupApplicationUpdate{
 					Update: &pb.GroupApplicationUpdate_RemovedApplicationId{
 						RemovedApplicationId: app.Id,
 					},
@@ -483,14 +487,20 @@ func (s *Server) broadcastGroupUpdate(update *pb.GroupsUpdate) {
 	}
 }
 
-func (s *Server) broadcastApplicationUpdate(groupId string, update *pb.GroupApplicationUpdate) {
-	subscribers, ok := s.applicationsSubscribers.Get(groupId)
-	if !ok {
+func (s *Server) broadcastApplicationUpdate(groupId, applicantAccountName string, update *pb.GroupApplicationUpdate) {
+	if subscribers, ok := s.applicationsSubscribers.Get(groupId); ok {
+		for _, ch := range subscribers.Snapshot() {
+			select {
+			case ch <- update:
+			default:
+				// Channel full, skip
+			}
+		}
 		return
 	}
-	for _, ch := range subscribers.Snapshot() {
+	if subscriber, ok := s.myApplicationsSubscribers.Get(applicantAccountName); ok {
 		select {
-		case ch <- update:
+		case subscriber <- update:
 		default:
 			// Channel full, skip
 		}

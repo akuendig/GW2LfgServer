@@ -342,7 +342,6 @@ func (db *DB) ListApplicationsForAccount(ctx context.Context, accountName string
 			&app.UpdatedAtSec); err != nil {
 			return nil, err
 		}
-		app.GroupId = accountName
 		apps = append(apps, &app)
 	}
 	return apps, rows.Err()
