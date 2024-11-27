@@ -51,7 +51,7 @@ type Config struct {
 func loadConfig() (*Config, error) {
 	// Get PORT from Render environment (required)
 	port := 50051
-	if p := os.Getenv("METRICS_PORT"); p != "" {
+	if p := os.Getenv("PORT"); p != "" {
 		portNum, err := strconv.Atoi(p)
 		if err != nil {
 			return nil, fmt.Errorf("invalid PORT value: %w", err)
