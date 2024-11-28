@@ -258,9 +258,9 @@ func main() {
 			start := time.Now()
 			// Increment request counter
 			counter := atomic.AddInt64(requestCounter, 1)
-			slog.Debug("HTTP request", "seq", counter, "method", r.Method, "url", r.URL.String())
+			slog.Info("HTTP request", "seq", counter, "method", r.Method, "url", r.URL.String())
 			wrappedGrpc.ServeHTTP(w, r)
-			slog.Debug("HTTP response", "seq", counter, "duration", time.Since(start))
+			slog.Info("HTTP response", "seq", counter, "duration", time.Since(start))
 		}),
 	}
 
