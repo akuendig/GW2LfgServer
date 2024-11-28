@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -250,11 +251,16 @@ func main() {
 	)
 
 	// Start HTTP server
+	requestCounter := new(int64)
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf("%s:%d", config.Host, config.Port),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			slog.Debug("HTTP request", "method", r.Method, "url", r.URL.String())
+			start := time.Now()
+			// Increment request counter
+			counter := atomic.AddInt64(requestCounter, 1)
+			slog.Debug("HTTP request", "seq", counter, "method", r.Method, "url", r.URL.String())
 			wrappedGrpc.ServeHTTP(w, r)
+			slog.Debug("HTTP response", "seq", counter, "duration", time.Since(start))
 		}),
 	}
 
