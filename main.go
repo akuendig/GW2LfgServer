@@ -251,8 +251,11 @@ func main() {
 
 	// Start HTTP server
 	httpServer := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", config.Host, config.Port),
-		Handler: wrappedGrpc,
+		Addr: fmt.Sprintf("%s:%d", config.Host, config.Port),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			slog.Debug("HTTP request", "method", r.Method, "url", r.URL.String())
+			wrappedGrpc.ServeHTTP(w, r)
+		}),
 	}
 
 	// Channel to receive shutdown signal
