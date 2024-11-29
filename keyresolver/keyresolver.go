@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -53,21 +52,11 @@ func New() *Resolver {
 }
 
 func (r *Resolver) Resolve(ctx context.Context, key string) (string, error) {
-	start := time.Now()
 	if name, err := r.getCached(key); err != nil {
-		defer func() {
-			slog.InfoContext(ctx, "keyresolver.Resolve.CachedError", slog.Duration("elapsed", time.Since(start)))
-		}()
 		return "", status.Error(codes.Internal, fmt.Errorf("failed to get cached key: %w", err).Error())
 	} else if name != nil {
-		defer func() {
-			slog.InfoContext(ctx, "keyresolver.Resolve.CachedName", slog.Duration("elapsed", time.Since(start)))
-		}()
 		return *name, nil
 	}
-	defer func() {
-		slog.InfoContext(ctx, "keyresolver.Resolve.Unchached", slog.Duration("elapsed", time.Since(start)))
-	}()
 
 	accountName, err := r.fetch(ctx, key)
 	if err != nil {
