@@ -498,7 +498,6 @@ func (s *Server) broadcastApplicationUpdate(groupId, applicantAccountName string
 				// Channel full, skip
 			}
 		}
-		return
 	}
 	if subscriber, ok := s.myApplicationsSubscribers.Get(applicantAccountName); ok {
 		select {
