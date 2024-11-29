@@ -363,6 +363,8 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 	if clientInfo == nil {
 		return status.Error(codes.PermissionDenied, "Not authenticated")
 	}
+	applications := make(chan *pb.GroupApplicationUpdate, 100)
+	s.myApplicationsSubscribers.Set(clientInfo.AccountName, applications)
 
 	group, err := s.db.GetGroup(stream.Context(), req.GroupId)
 	if err != nil {
@@ -370,21 +372,21 @@ func (s *Server) SubscribeGroupApplications(req *pb.SubscribeGroupApplicationsRe
 		return status.Error(codes.NotFound, "Group not found")
 	}
 
-	if clientInfo.AccountName != group.CreatorId {
-		return status.Error(codes.PermissionDenied, "Not group creator")
-	}
+	if group != nil {
+		if clientInfo.AccountName != group.CreatorId {
+			return status.Error(codes.PermissionDenied, "Not group creator")
+		}
 
-	applications := make(chan *pb.GroupApplicationUpdate, 100)
-	s.applicationsSubscribers.Update(
-		req.GroupId,
-		func(subscribers *syncmap.Map[string, chan *pb.GroupApplicationUpdate], ok bool) (*syncmap.Map[string, chan *pb.GroupApplicationUpdate], bool) {
-			if subscribers == nil {
-				subscribers = syncmap.New[string, chan *pb.GroupApplicationUpdate]()
-			}
-			subscribers.Set(clientInfo.Token, applications)
-			return subscribers, true
-		})
-	s.myApplicationsSubscribers.Set(clientInfo.AccountName, applications)
+		s.applicationsSubscribers.Update(
+			req.GroupId,
+			func(subscribers *syncmap.Map[string, chan *pb.GroupApplicationUpdate], ok bool) (*syncmap.Map[string, chan *pb.GroupApplicationUpdate], bool) {
+				if subscribers == nil {
+					subscribers = syncmap.New[string, chan *pb.GroupApplicationUpdate]()
+				}
+				subscribers.Set(clientInfo.Token, applications)
+				return subscribers, true
+			})
+	}
 
 	// TODO: What if the group gets deleted?
 	defer func() {
