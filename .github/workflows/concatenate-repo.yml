@@ -30,7 +30,8 @@ jobs:
         from pathlib import Path
         import magic
 
-        # File extensions to always exclude
+        repo_name = os.environ.get('GITHUB_REPOSITORY', '').split('/')[-1] or 'repository'
+
         EXCLUDE_EXTENSIONS = {
             '.exe', '.dll', '.so', '.dylib', '.zip', '.tar', '.gz', '.rar',
             '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.ico', '.svg', '.webp',
@@ -39,7 +40,6 @@ jobs:
             '.sum'
         }
 
-        # Directories to exclude
         EXCLUDE_DIRS = {
             '.git', '.github', 'node_modules', 'venv', '.env', '.venv',
             'build', 'dist', '__pycache__', '.idea', '.vscode'
@@ -64,27 +64,30 @@ jobs:
             output = []
             repo_root = Path('.')
 
+            output.append(f"# Repository: {repo_name}")
+            output.append(f"# Generated: {os.environ.get('GITHUB_SHA', 'unknown commit')}")
+            output.append("")
+
             for path in repo_root.rglob('*'):
-                # Skip directories and excluded paths
                 if path.is_dir() or any(x in path.parts for x in EXCLUDE_DIRS):
                     continue
 
-                # Skip files with excluded extensions
                 if path.suffix.lower() in EXCLUDE_EXTENSIONS:
                     continue
 
-                # Skip files larger than 10MB
                 if path.stat().st_size > 10_000_000:
                     output.append(f"\n### File: {path} ### [Skipped - file too large]\n")
                     continue
 
-                # Process only text files
                 if is_text_file(path):
                     output.append(process_file(path))
 
-            # Write the concatenated output
-            with open('repository_concat.txt', 'w', encoding='utf-8') as f:
+            output_filename = f"{repo_name}_concat.txt"
+            
+            with open(output_filename, 'w', encoding='utf-8') as f:
                 f.write("\n".join(output))
+            
+            return output_filename
 
         if __name__ == '__main__':
             main()
@@ -99,5 +102,5 @@ jobs:
     - name: Upload concatenated file
       uses: actions/upload-artifact@v3
       with:
-        name: repository-content
-        path: repository_concat.txt
+        name: ${{ github.event.repository.name }}-content
+        path: ${{ github.event.repository.name }}_concat.txt
