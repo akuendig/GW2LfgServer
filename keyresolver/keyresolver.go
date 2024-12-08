@@ -3,6 +3,7 @@ package keyresolver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -60,8 +61,10 @@ func (r *Resolver) Resolve(ctx context.Context, key string) (string, error) {
 
 	accountName, err := r.fetch(ctx, key)
 	if err != nil {
-		r.cacheResult(key, "", err)
-		return "", status.Error(codes.Internal, fmt.Errorf("failed to decode account: %w", err).Error())
+		if !(errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+			r.cacheResult(key, "", err)
+		}
+		return "", status.Error(codes.Internal, fmt.Errorf("failed to fetch account information: %w", err).Error())
 	} else {
 		r.cacheResult(key, accountName, nil)
 		return accountName, nil
@@ -104,7 +107,7 @@ func (r *Resolver) fetch(ctx context.Context, key string) (string, error) {
 	}
 	accountRes, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve key: %w", err)
+		return "", fmt.Errorf("failed to send request: %w", err)
 	}
 	defer accountRes.Body.Close()
 
